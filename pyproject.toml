@@ -1,0 +1,9 @@
+[project]
+name = "spzc-ids-random-forest-shap"
+version = "0.1.0"
+description = "Intrusion detection using Random Forest and SHAP on CICIDS2017"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+]
