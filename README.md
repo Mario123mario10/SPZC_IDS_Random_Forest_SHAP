@@ -12,13 +12,16 @@ Projekt zakłada użycie następujących narzędzi:
 
 Narzędzia `uv` oraz `just` powinny być zainstalowane globalnie w systemie i dostępne z poziomu terminala.
 
+
+
 ## Struktura danych
 
-Surowe pliki CSV ze zbioru CICIDS2017 należy umieścić w katalogu:
+Pełny zbiór CICIDS2017 nie jest przechowywany w repozytorium ze względu na rozmiar plików.
+
+Należy pobrać pliki CSV ze strony Canadian Institute for Cybersecurity (https://cicresearch.ca/CICDataset/CIC-IDS-2017/) i umieścić je w katalogu:
 
 ```text
 data_raw/
-```
 
 Po przetworzeniu dane zostaną zapisane w katalogu:
 
@@ -26,7 +29,7 @@ Po przetworzeniu dane zostaną zapisane w katalogu:
 data_processed/
 ```
 
-Przykładowa struktura katalogów:
+Struktura katalogów:
 
 ```text
 project/
@@ -39,6 +42,7 @@ project/
 ├── justfile
 └── README.md
 ```
+
 
 ## Instalacja zależności
 
