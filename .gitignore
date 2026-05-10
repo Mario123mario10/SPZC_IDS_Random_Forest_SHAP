@@ -325,3 +325,4 @@ Temporary Items
 # Raw and processed datasets
 data_raw/
 data_processed/
+data_samples/

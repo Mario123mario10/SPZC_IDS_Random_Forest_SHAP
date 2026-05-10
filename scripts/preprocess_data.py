@@ -1,12 +1,14 @@
 from __future__ import annotations
+print("Importing libraries...")
 
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 
-RAW_DIR = Path("data_raw")
+RAW_DIR = Path("data_samples")
 PROCESSED_DIR = Path("data_processed")
 
 def count_infinite_values(df: pd.DataFrame) -> pd.Series:
@@ -91,16 +93,18 @@ def main() -> None:
         raise FileNotFoundError(f"Nie znaleziono plików CSV w katalogu {RAW_DIR}.")
 
     reports = []
+    cleaned_files = []
 
     for csv_path in csv_files:
-        reports.append(preprocess_file(csv_path))
+        result = preprocess_file(csv_path)
+        reports.append(result)
+        # Zapisanie ściezek do oczyszczonych plików.
+        cleaned_files.append(PROCESSED_DIR / str(result["output_file"]))
 
     report_df = pd.DataFrame(reports)
     report_path = PROCESSED_DIR / "cleaning_report.csv"
     report_df.to_csv(report_path, index=False)
-
-    print("\nPreprocessing finished.")
-    print(f"Cleaning report saved to: {report_path}")
+   
 
     # Dodatkowe zabezpieczenie: jeśli po czyszczeniu zostały braki/inf, zatrzymaj skrypt.
     total_missing_after = int(report_df["missing_after"].sum())
@@ -108,6 +112,43 @@ def main() -> None:
 
     assert total_missing_after == 0, "Po czyszczeniu nadal istnieją brakujące wartości."
     assert total_infinite_after == 0, "Po czyszczeniu nadal istnieją wartości nieskończone."
+
+    print("\nPreprocessing finished.")
+    print(f"Cleaning report saved to: {report_path}")
+
+    print("Łączenie oczyszczonych plików")
+    # Wczytanie wyczyszczonych plików 
+    dfs = [pd.read_csv(file, low_memory=False) for file in cleaned_files]
+    # Połączenie w jeden DataFrame
+    combined_df = pd.concat(dfs, ignore_index=True)
+
+    # Filtracja ataków 
+    attack_labels = ['Benign', 'DDoS', 'PortScan', 'FTP-Patator', 'SSH-Patator']
+    combined_df = combined_df[combined_df['Label'].isin(attack_labels)]
+    print(f"Rozmiar po łączeniu i filtracji: {combined_df.shape}")
+
+    print("Dzielenie na zbiór treningowy i testowy")
+    X = combined_df.drop(columns=['Label'])
+    y = combined_df['Label']
+
+    # Rzadki atak stanowi 2% całego zbioru to w zbiorze testowym tez powinien stanowić 2% -> stratify=y
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    # Łączenie X_train i y_train z powrotem w jeden DataFrame.
+    train_df = X_train.copy()
+    train_df['Label'] = y_train
+    train_df.to_csv(PROCESSED_DIR / "train.csv", index=False)
+
+    test_df = X_test.copy()
+    test_df['Label'] = y_test
+    test_df.to_csv(PROCESSED_DIR / "test.csv", index=False)
+    print(f"Zapisano train.csv i test.csv w {PROCESSED_DIR}")
+    print(f" {PROCESSED_DIR / 'train.csv'}: (wierszy;{train_df.shape[0]}), (kolumn;{train_df.shape[1]})")
+    print(f" {PROCESSED_DIR / 'test.csv'}: (wierszy;{test_df.shape[0]}), (kolumn;{test_df.shape[1]})")
+
+
 
 
 if __name__ == "__main__":
