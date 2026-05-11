@@ -1,9 +1,4 @@
 
----
-
-## Poprawiony `justfile`
-
-```makefile
 # List available commands
 @default:
 	just -l

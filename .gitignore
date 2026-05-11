@@ -323,6 +323,6 @@ Temporary Items
 .apdisk
 
 # Raw and processed datasets
-data_raw/
+data_raw/*
+!data_raw/README.md
 data_processed/
-data_samples/

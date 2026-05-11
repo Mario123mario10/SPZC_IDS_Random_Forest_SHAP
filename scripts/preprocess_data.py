@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 
-RAW_DIR = Path("data_samples")
+RAW_DIR = Path("data_raw")
 PROCESSED_DIR = Path("data_processed")
 
 def count_infinite_values(df: pd.DataFrame) -> pd.Series:
