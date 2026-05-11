@@ -11,8 +11,8 @@ from sklearn.model_selection import train_test_split
 RAW_DIR = Path("data_raw")
 PROCESSED_DIR = Path("data_processed")
 
-MONDAY_CLEAN_FILE = PROCESSED_DIR / "Monday-WorkingHours_pcap_ISCX_clean.csv"
-FRIDAY_DDOS_CLEAN_FILE = PROCESSED_DIR / "Friday-WorkingHours-Afternoon-DDos_pcap_ISCX_clean.csv"
+MONDAY_CLEAN_FILE = PROCESSED_DIR / "Monday-WorkingHours.pcap_ISCX_clean.csv"
+FRIDAY_DDOS_CLEAN_FILE = PROCESSED_DIR / "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX_clean.csv"
 
 TEST_SIZE = 0.2
 RANDOM_STATE = 42

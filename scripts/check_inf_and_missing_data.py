@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 
-# df = pd.read_csv("data_samples/Friday-WorkingHours-Afternoon-DDos-pcap_ISCX.csv")
-df = pd.read_csv("data_raw/Monday-WorkingHours_pcap_ISCX.csv")
+# df = pd.read_csv("data_samples/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv")
+df = pd.read_csv("data_raw/Monday-WorkingHours.pcap_ISCX.csv")
 
 
 # Usuń spacje z nazw kolumn
