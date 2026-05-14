@@ -326,3 +326,6 @@ Temporary Items
 data_raw/*
 !data_raw/README.md
 data_processed/
+
+# Models
+models/*.joblib

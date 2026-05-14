@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import joblib
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
+
+PROCESSED_DIR = Path("data_processed")
+MODEL_DIR = Path("models")
+
+TRAIN_FILE = PROCESSED_DIR / "train.csv"
+TEST_FILE = PROCESSED_DIR / "test.csv"
+
+RANDOM_STATE = 42
+
+
+def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    if not TRAIN_FILE.exists():
+        raise FileNotFoundError(f"Nie znaleziono pliku: {TRAIN_FILE}")
+
+    if not TEST_FILE.exists():
+        raise FileNotFoundError(f"Nie znaleziono pliku: {TEST_FILE}")
+
+    train_df = pd.read_csv(TRAIN_FILE)
+    test_df = pd.read_csv(TEST_FILE)
+
+    if "Label" not in train_df.columns:
+        raise KeyError(f"Brakuje kolumny Label w pliku {TRAIN_FILE}")
+
+    if "Label" not in test_df.columns:
+        raise KeyError(f"Brakuje kolumny Label w pliku {TEST_FILE}")
+
+    X_train = train_df.drop(columns=["Label"])
+    y_train = train_df["Label"].astype(int)
+
+    X_test = test_df.drop(columns=["Label"])
+    y_test = test_df["Label"].astype(int)
+
+    return X_train, X_test, y_train, y_test
+
+
+def main() -> None:
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    print("Loading preprocessed train/test data...")
+    X_train, X_test, y_train, y_test = load_train_test_data()
+
+    print("Training Random Forest...")
+
+    model = RandomForestClassifier(
+        n_estimators=50,
+        max_depth=15,
+        random_state=RANDOM_STATE,
+        n_jobs=-1,
+    )
+
+    model.fit(X_train, y_train)
+
+    print("Evaluating model...")
+
+    y_pred = model.predict(X_test)
+
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, zero_division=0)
+    recall = recall_score(y_test, y_pred, zero_division=0)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
+    cm = confusion_matrix(y_test, y_pred)
+
+    print("\nMetrics:")
+    print(f"Accuracy:  {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall:    {recall:.4f}")
+    print(f"F1-score:  {f1:.4f}")
+
+    print("\nConfusion matrix:")
+    print(cm)
+
+    print("\nClassification report:")
+    print(
+        classification_report(
+            y_test,
+            y_pred,
+            target_names=["Benign", "Attack"],
+            zero_division=0,
+        )
+    )
+
+    metrics_df = pd.DataFrame(
+        [
+            {
+                "accuracy": accuracy,
+                "precision": precision,
+                "recall": recall,
+                "f1_score": f1,
+            }
+        ]
+    )
+
+    metrics_df.to_csv(PROCESSED_DIR / "random_forest_metrics.csv", index=False)
+
+    cm_df = pd.DataFrame(
+        cm,
+        index=["true_benign", "true_attack"],
+        columns=["pred_benign", "pred_attack"],
+    )
+    cm_df.to_csv(PROCESSED_DIR / "random_forest_confusion_matrix.csv")
+
+    model_path = MODEL_DIR / "random_forest_baseline.joblib"
+    joblib.dump(model, model_path)
+
+    print(f"\nSaved model to: {model_path}")
+    print(f"Saved metrics to: {PROCESSED_DIR / 'random_forest_metrics.csv'}")
+    print(f"Saved confusion matrix to: {PROCESSED_DIR / 'random_forest_confusion_matrix.csv'}")
+
+
+if __name__ == "__main__":
+    main()
