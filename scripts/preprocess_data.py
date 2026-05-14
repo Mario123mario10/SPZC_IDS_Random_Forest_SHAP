@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+import joblib
+from sklearn.preprocessing import StandardScaler
+
 
 RAW_DIR = Path("data_raw")
 PROCESSED_DIR = Path("data_processed")
@@ -171,27 +174,70 @@ def main() -> None:
     combined_df = load_baseline_dataset()
     print(f"Rozmiar bazowego zbioru: {combined_df.shape}")
 
-    print("Dzielenie na zbiór treningowy i testowy")
-    X = combined_df.drop(columns=['Label'])
-    y = combined_df['Label']
+    print("Encoding labels: Benign -> 0, Attack/DDoS -> 1")
 
-    # Rzadki atak stanowi 2% całego zbioru to w zbiorze testowym tez powinien stanowić 2% -> stratify=y
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+    combined_df["Label"] = combined_df["Label"].astype(str).str.strip()
+
+    y = combined_df["Label"].apply(
+        lambda label: 0 if label.lower() == "benign" else 1
     )
 
-    # Łączenie X_train i y_train z powrotem w jeden DataFrame.
-    train_df = X_train.copy()
-    train_df['Label'] = y_train
+    X = combined_df.drop(columns=["Label"])
+
+    # Zabezpieczenie: Random Forest i StandardScaler oczekują cech numerycznych.
+    non_numeric_columns = X.select_dtypes(exclude=[np.number]).columns.tolist()
+    if non_numeric_columns:
+        raise ValueError(
+            "W zbiorze cech znajdują się nienumeryczne kolumny: "
+            f"{non_numeric_columns}. Usuń je albo zakoduj przed skalowaniem."
+        )
+
+    print("Dzielenie na zbiór treningowy i testowy")
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=TEST_SIZE,
+        random_state=RANDOM_STATE,
+        stratify=y,
+    )
+
+    print("Scaling features with StandardScaler")
+
+    scaler = StandardScaler()
+
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train),
+        columns=X_train.columns,
+        index=X_train.index,
+    )
+
+    X_test_scaled = pd.DataFrame(
+        scaler.transform(X_test),
+        columns=X_test.columns,
+        index=X_test.index,
+    )
+
+    joblib.dump(scaler, PROCESSED_DIR / "standard_scaler.joblib")
+
+    train_df = X_train_scaled.copy()
+    train_df["Label"] = y_train.values
     train_df.to_csv(PROCESSED_DIR / "train.csv", index=False)
 
-    test_df = X_test.copy()
-    test_df['Label'] = y_test
+    test_df = X_test_scaled.copy()
+    test_df["Label"] = y_test.values
     test_df.to_csv(PROCESSED_DIR / "test.csv", index=False)
-    print(f"Zapisano train.csv i test.csv w {PROCESSED_DIR}")
-    print(f" {PROCESSED_DIR / 'train.csv'}: (wierszy;{train_df.shape[0]}), (kolumn;{train_df.shape[1]})")
-    print(f" {PROCESSED_DIR / 'test.csv'}: (wierszy;{test_df.shape[0]}), (kolumn;{test_df.shape[1]})")
 
+    print(f"Zapisano train.csv i test.csv w {PROCESSED_DIR}")
+    print(f"{PROCESSED_DIR / 'train.csv'}: {train_df.shape}")
+    print(f"{PROCESSED_DIR / 'test.csv'}: {test_df.shape}")
+
+    print("\nClass distribution in train:")
+    print(train_df["Label"].value_counts())
+
+    print("\nClass distribution in test:")
+    print(test_df["Label"].value_counts())
+    
     print("\nPreprocessing finished.")
 
 
