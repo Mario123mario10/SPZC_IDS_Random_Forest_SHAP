@@ -9,6 +9,21 @@ dependencies = [
     "matplotlib>=3.10.9",
     "numpy",
     "pandas",
+    "ruff>=0.15.15",
     "scikit-learn>=1.7.2",
     "shap>=0.49.1",
+    "tabulate>=0.10.0",
+]
+
+[dependency-groups]
+dev = []
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+    ".venv",
+    "data_raw",
+    "data_processed",
+    "models",
 ]

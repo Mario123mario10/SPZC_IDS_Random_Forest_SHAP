@@ -1,14 +1,14 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 # df = pd.read_csv("data_samples/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv")
 df = pd.read_csv("data_raw/Monday-WorkingHours.pcap_ISCX.csv")
 
 
-# Usuń spacje z nazw kolumn
+# Remove spaces from column names.
 df.columns = df.columns.str.strip()
 
-# Sprawdzenie przed czyszczeniem
+# Check the data before cleaning.
 print("Before cleaning:")
 print("Missing values:")
 print(df.isna().sum()[df.isna().sum() > 0])
@@ -18,10 +18,10 @@ inf_counts = np.isinf(numeric_df).sum()
 print("Infinite values:")
 print(inf_counts[inf_counts > 0])
 
-# Zamień inf na NaN
+# Replace inf values with NaN.
 df = df.replace([np.inf], np.nan)
 
-# Usuń rekordy z brakami
+# Remove rows with missing values.
 df_clean = df.dropna()
 
 print("\nAfter cleaning:")

@@ -1,15 +1,10 @@
-from pathlib import Path
+import argparse
 
 import joblib
 import pandas as pd
 from sklearn.metrics import f1_score
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
-
-MODEL_PATH = MODEL_DIR / "random_forest_baseline.joblib"
-TEST_PATH = PROCESSED_DIR / "test.csv"
-OUTPUT_PATH = PROCESSED_DIR / "group_permutation_importance.csv"
+from variant_paths import add_variant_argument, get_variant_paths
 
 
 FEATURE_GROUPS = {
@@ -104,10 +99,19 @@ FEATURE_GROUPS = {
 }
 
 
-def main() -> None:
-    model = joblib.load(MODEL_PATH)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
-    test_df = pd.read_csv(TEST_PATH)
+
+def main() -> None:
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    model = joblib.load(paths.random_forest_model_file)
+
+    test_df = pd.read_csv(paths.test_file)
     X_test = test_df.drop(columns=["Label"])
     y_test = test_df["Label"].astype(int)
 
@@ -131,10 +135,14 @@ def main() -> None:
         X_permuted = X_sample.copy()
 
         for col in existing_columns:
-            X_permuted[col] = X_permuted[col].sample(
-                frac=1,
-                random_state=42,
-            ).values
+            X_permuted[col] = (
+                X_permuted[col]
+                .sample(
+                    frac=1,
+                    random_state=42,
+                )
+                .values
+            )
 
         permuted_pred = model.predict(X_permuted)
         permuted_f1 = f1_score(y_sample, permuted_pred)
@@ -154,8 +162,9 @@ def main() -> None:
 
     print(result_df[["group", "n_features", "f1_drop", "permuted_f1"]])
 
-    result_df.to_csv(OUTPUT_PATH, index=False)
-    print(f"\nSaved to: {OUTPUT_PATH}")
+    output_path = paths.processed_dir / "group_permutation_importance.csv"
+    result_df.to_csv(output_path, index=False)
+    print(f"\nSaved to: {output_path}")
 
 
 if __name__ == "__main__":

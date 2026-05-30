@@ -1,30 +1,38 @@
-from pathlib import Path
+from __future__ import annotations
+
+import argparse
 
 import joblib
 import pandas as pd
 from sklearn.inspection import permutation_importance
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
+from variant_paths import add_variant_argument, get_variant_paths
 
-MODEL_PATH = MODEL_DIR / "random_forest_baseline.joblib"
-TEST_PATH = PROCESSED_DIR / "test.csv"
 
-OUTPUT_PATH = PROCESSED_DIR / "random_forest_permutation_importance.csv"
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def main() -> None:
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    model_path = paths.random_forest_model_file
+    test_path = paths.test_file
+    output_path = paths.processed_dir / "random_forest_permutation_importance.csv"
+
     print("Loading model...")
-    model = joblib.load(MODEL_PATH)
+    model = joblib.load(model_path)
 
     print("Loading test data...")
-    test_df = pd.read_csv(TEST_PATH)
+    test_df = pd.read_csv(test_path)
 
     X_test = test_df.drop(columns=["Label"])
     y_test = test_df["Label"].astype(int)
 
-    # Dla szybkości można wziąć próbkę.
-    # Przy pełnym test.csv też zadziała, ale może trwać dłużej.
+    # Use a sample for speed. The full test.csv also works but may take longer.
     sample_size = min(20000, len(X_test))
 
     X_sample = X_test.sample(n=sample_size, random_state=42)
@@ -53,9 +61,9 @@ def main() -> None:
     print("\nTop 30 permutation importances:")
     print(importance_df.head(30).to_string(index=False))
 
-    importance_df.to_csv(OUTPUT_PATH, index=False)
+    importance_df.to_csv(output_path, index=False)
 
-    print(f"\nSaved permutation importances to: {OUTPUT_PATH}")
+    print(f"\nSaved permutation importances to: {output_path}")
 
 
 if __name__ == "__main__":

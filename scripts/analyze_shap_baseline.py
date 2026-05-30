@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import joblib
@@ -12,12 +13,7 @@ import numpy as np
 import pandas as pd
 import shap
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
-OUTPUT_DIR = PROCESSED_DIR / "shap_baseline"
-
-MODEL_PATH = MODEL_DIR / "random_forest_baseline.joblib"
-TEST_PATH = PROCESSED_DIR / "test.csv"
+from variant_paths import add_variant_argument, get_variant_paths
 
 SAMPLES_PER_CLASS = 5000
 RANDOM_STATE = 42
@@ -59,6 +55,12 @@ def build_balanced_sample(test_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     return pd.concat(sampled_groups, ignore_index=True)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def choose_local_examples(
@@ -116,6 +118,7 @@ def save_dependence_plots(
     shap_attack: np.ndarray,
     X_sample: pd.DataFrame,
     importance_df: pd.DataFrame,
+    output_dir: Path,
 ) -> None:
     selected_features = []
 
@@ -127,7 +130,7 @@ def save_dependence_plots(
 
     for feature in selected_features[:2]:
         safe_name = feature.replace("/", "_").replace(" ", "_")
-        output_path = OUTPUT_DIR / f"shap_dependence_{safe_name}.png"
+        output_path = output_dir / f"shap_dependence_{safe_name}.png"
 
         plt.figure()
         shap.dependence_plot(
@@ -142,14 +145,13 @@ def save_dependence_plots(
         plt.close()
 
 
-def main() -> None:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+def generate_shap_report(
+    model,
+    test_df: pd.DataFrame,
+    output_dir: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Loading model...")
-    model = joblib.load(MODEL_PATH)
-
-    print("Loading test data...")
-    test_df = pd.read_csv(TEST_PATH)
     sample_df = build_balanced_sample(test_df)
 
     X_sample = sample_df.drop(columns=["Label"])
@@ -171,12 +173,12 @@ def main() -> None:
         }
     ).sort_values("mean_abs_shap", ascending=False)
 
-    importance_path = OUTPUT_DIR / "shap_mean_abs_importance.csv"
-    summary_path = OUTPUT_DIR / "shap_summary_attack.png"
-    bar_path = OUTPUT_DIR / "shap_bar_attack.png"
-    attack_waterfall_path = OUTPUT_DIR / "shap_waterfall_attack_high_confidence.png"
-    benign_waterfall_path = OUTPUT_DIR / "shap_waterfall_benign_high_confidence.png"
-    examples_path = OUTPUT_DIR / "shap_local_examples.csv"
+    importance_path = output_dir / "shap_mean_abs_importance.csv"
+    summary_path = output_dir / "shap_summary_attack.png"
+    bar_path = output_dir / "shap_bar_attack.png"
+    attack_waterfall_path = output_dir / "shap_waterfall_attack_high_confidence.png"
+    benign_waterfall_path = output_dir / "shap_waterfall_benign_high_confidence.png"
+    examples_path = output_dir / "shap_local_examples.csv"
 
     importance_df.to_csv(importance_path, index=False)
 
@@ -223,7 +225,7 @@ def main() -> None:
         benign_idx,
         benign_waterfall_path,
     )
-    save_dependence_plots(shap_attack, X_sample, importance_df)
+    save_dependence_plots(shap_attack, X_sample, importance_df, output_dir)
 
     examples_df = pd.DataFrame(
         [
@@ -245,10 +247,25 @@ def main() -> None:
     )
     examples_df.to_csv(examples_path, index=False)
 
-    print(f"Saved SHAP outputs to: {OUTPUT_DIR}")
+    print(f"Saved SHAP outputs to: {output_dir}")
     print(importance_df.head(MAX_DISPLAY).to_string(index=False))
     print("\nLocal examples:")
     print(examples_df.to_string(index=False))
+
+    return importance_df, examples_df
+
+
+def main() -> None:
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+    output_dir = paths.processed_dir / "shap_random_forest"
+
+    print("Loading model...")
+    model = joblib.load(paths.random_forest_model_file)
+
+    print("Loading test data...")
+    test_df = pd.read_csv(paths.test_file)
+    generate_shap_report(model, test_df, output_dir)
 
 
 if __name__ == "__main__":

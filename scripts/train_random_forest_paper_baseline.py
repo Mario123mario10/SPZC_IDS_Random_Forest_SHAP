@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -14,30 +13,35 @@ from sklearn.metrics import (
     recall_score,
 )
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
+from analyze_shap_baseline import generate_shap_report
+from variant_paths import get_variant_paths
 
-TRAIN_FILE = PROCESSED_DIR / "train.csv"
-TEST_FILE = PROCESSED_DIR / "test.csv"
+VARIANT = "paper_baseline"
+PATHS = get_variant_paths(VARIANT)
+PROCESSED_DIR = PATHS.processed_dir
+MODEL_DIR = PATHS.model_dir
+
+TRAIN_FILE = PATHS.train_file
+TEST_FILE = PATHS.test_file
 
 RANDOM_STATE = 42
 
 
 def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     if not TRAIN_FILE.exists():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {TRAIN_FILE}")
+        raise FileNotFoundError(f"File not found: {TRAIN_FILE}")
 
     if not TEST_FILE.exists():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {TEST_FILE}")
+        raise FileNotFoundError(f"File not found: {TEST_FILE}")
 
     train_df = pd.read_csv(TRAIN_FILE)
     test_df = pd.read_csv(TEST_FILE)
 
     if "Label" not in train_df.columns:
-        raise KeyError(f"Brakuje kolumny Label w pliku {TRAIN_FILE}")
+        raise KeyError(f"Missing Label column in file {TRAIN_FILE}")
 
     if "Label" not in test_df.columns:
-        raise KeyError(f"Brakuje kolumny Label w pliku {TEST_FILE}")
+        raise KeyError(f"Missing Label column in file {TEST_FILE}")
 
     X_train = train_df.drop(columns=["Label"])
     y_train = train_df["Label"].astype(int)
@@ -50,6 +54,7 @@ def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Se
 
 def main() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     print("Loading preprocessed train/test data...")
     X_train, X_test, y_train, y_test = load_train_test_data()
@@ -114,12 +119,21 @@ def main() -> None:
     )
     cm_df.to_csv(PROCESSED_DIR / "random_forest_confusion_matrix.csv")
 
-    model_path = MODEL_DIR / "random_forest_baseline.joblib"
+    model_path = PATHS.random_forest_model_file
     joblib.dump(model, model_path)
 
     print(f"\nSaved model to: {model_path}")
     print(f"Saved metrics to: {PROCESSED_DIR / 'random_forest_metrics.csv'}")
     print(f"Saved confusion matrix to: {PROCESSED_DIR / 'random_forest_confusion_matrix.csv'}")
+
+    print("\nGenerating SHAP report for the trained paper_baseline model...")
+    test_df = X_test.copy()
+    test_df["Label"] = y_test.values
+    generate_shap_report(
+        model,
+        test_df,
+        PROCESSED_DIR / "shap_random_forest",
+    )
 
 
 if __name__ == "__main__":

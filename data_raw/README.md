@@ -1,9 +1,11 @@
 # data_raw
 
-Tutaj należy umieścić surowe, nieprzekształcone pliki CSV z datasetu CICIDS2017.
+Place the raw, unmodified CICIDS2017 CSV files in this directory.
 
-Pełne pliki danych nie są dodawane do repozytorium, ponieważ są zbyt duże.
+The full dataset files are not committed to the repository because they are too
+large.
 
-Przykład oczekiwanych plików:
-- Monday-WorkingHours_pcap_ISCX.csv
-- Friday-WorkingHours-Afternoon-DDos_pcap_ISCX.csv
+Expected example files:
+
+- Monday-WorkingHours.pcap_ISCX.csv
+- Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv

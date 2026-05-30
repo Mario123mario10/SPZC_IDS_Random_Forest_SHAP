@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+import argparse
 
 import joblib
 import pandas as pd
@@ -16,25 +16,33 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
-
-INPUT_FILE = PROCESSED_DIR / "baseline_ddos_dataset.csv"
+from variant_paths import add_variant_argument, get_variant_paths
 
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 
-MODEL_PATH = MODEL_DIR / "random_forest_port_80_only.joblib"
-SCALER_PATH = PROCESSED_DIR / "standard_scaler_port_80_only.joblib"
-METRICS_PATH = PROCESSED_DIR / "random_forest_port_80_only_metrics.csv"
-CONFUSION_MATRIX_PATH = PROCESSED_DIR / "random_forest_port_80_only_confusion_matrix.csv"
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def main() -> None:
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    paths.model_dir.mkdir(parents=True, exist_ok=True)
+    paths.processed_dir.mkdir(parents=True, exist_ok=True)
+
+    input_file = paths.baseline_dataset_file
+    model_path = paths.model_dir / "random_forest_port_80_only.joblib"
+    scaler_path = paths.processed_dir / "standard_scaler_port_80_only.joblib"
+    metrics_path = paths.processed_dir / "random_forest_port_80_only_metrics.csv"
+    confusion_matrix_path = paths.processed_dir / "random_forest_port_80_only_confusion_matrix.csv"
 
     print("Loading baseline dataset...")
-    df = pd.read_csv(INPUT_FILE)
+    df = pd.read_csv(input_file)
 
     df.columns = df.columns.str.strip()
     df["Label"] = df["Label"].astype(str).str.strip()
@@ -52,22 +60,20 @@ def main() -> None:
 
     if df_port_80["Label"].nunique() < 2:
         raise ValueError(
-            "Po filtracji Destination Port == 80 została tylko jedna klasa. "
-            "Nie da się trenować klasyfikatora binarnego."
+            "Only one class remains after filtering Destination Port == 80. "
+            "A binary classifier cannot be trained on this subset."
         )
 
-    y = df_port_80["Label"].apply(
-        lambda label: 0 if label.lower() == "benign" else 1
-    )
+    y = df_port_80["Label"].apply(lambda label: 0 if label.lower() == "benign" else 1)
 
     X = df_port_80.drop(columns=["Label"])
 
-    # Usuwamy Destination Port, bo po filtracji jest stały i nie powinien wnosić informacji.
+    # Destination Port is constant after filtering and should not carry signal.
     X = X.drop(columns=["Destination Port"])
 
     non_numeric_columns = X.select_dtypes(exclude=["number"]).columns.tolist()
     if non_numeric_columns:
-        raise ValueError(f"Nienumeryczne kolumny w X: {non_numeric_columns}")
+        raise ValueError(f"Non-numeric columns in X: {non_numeric_columns}")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -96,7 +102,7 @@ def main() -> None:
         index=X_test.index,
     )
 
-    joblib.dump(scaler, SCALER_PATH)
+    joblib.dump(scaler, scaler_path)
 
     print("\nTraining Random Forest on port 80 subset...")
 
@@ -152,21 +158,21 @@ def main() -> None:
         ]
     )
 
-    metrics_df.to_csv(METRICS_PATH, index=False)
+    metrics_df.to_csv(metrics_path, index=False)
 
     cm_df = pd.DataFrame(
         cm,
         index=["true_benign", "true_attack"],
         columns=["pred_benign", "pred_attack"],
     )
-    cm_df.to_csv(CONFUSION_MATRIX_PATH)
+    cm_df.to_csv(confusion_matrix_path)
 
-    joblib.dump(model, MODEL_PATH)
+    joblib.dump(model, model_path)
 
-    print(f"\nSaved model to: {MODEL_PATH}")
-    print(f"Saved scaler to: {SCALER_PATH}")
-    print(f"Saved metrics to: {METRICS_PATH}")
-    print(f"Saved confusion matrix to: {CONFUSION_MATRIX_PATH}")
+    print(f"\nSaved model to: {model_path}")
+    print(f"Saved scaler to: {scaler_path}")
+    print(f"Saved metrics to: {metrics_path}")
+    print(f"Saved confusion matrix to: {confusion_matrix_path}")
 
 
 if __name__ == "__main__":

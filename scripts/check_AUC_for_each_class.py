@@ -1,16 +1,22 @@
-from pathlib import Path
+import argparse
 
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-PROCESSED_DIR = Path("data_processed")
+from variant_paths import add_variant_argument, get_variant_paths
 
-TRAIN_PATH = PROCESSED_DIR / "train.csv"
-OUTPUT_PATH = PROCESSED_DIR / "single_feature_auc.csv"
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def main() -> None:
-    df = pd.read_csv(TRAIN_PATH)
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    df = pd.read_csv(paths.train_file)
 
     X = df.drop(columns=["Label"])
     y = df["Label"].astype(int)
@@ -37,9 +43,10 @@ def main() -> None:
 
     print(auc_df.head(30).to_string(index=False))
 
-    auc_df.to_csv(OUTPUT_PATH, index=False)
+    output_path = paths.processed_dir / "single_feature_auc.csv"
+    auc_df.to_csv(output_path, index=False)
 
-    print(f"\nSaved to: {OUTPUT_PATH}")
+    print(f"\nSaved to: {output_path}")
 
 
 if __name__ == "__main__":

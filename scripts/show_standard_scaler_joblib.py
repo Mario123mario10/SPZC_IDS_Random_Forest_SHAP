@@ -1,11 +1,21 @@
-from pathlib import Path
+import argparse
 
 import joblib
 import pandas as pd
 
-SCALER_PATH = Path("data_processed/standard_scaler.joblib")
+from variant_paths import add_variant_argument, get_variant_paths
 
-scaler = joblib.load(SCALER_PATH)
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
+
+
+args = parse_args()
+paths = get_variant_paths(args.variant)
+
+scaler = joblib.load(paths.scaler_file)
 
 if hasattr(scaler, "feature_names_in_"):
     feature_names = scaler.feature_names_in_
@@ -23,4 +33,6 @@ scaler_df = pd.DataFrame(
 
 print(scaler_df.head(20))
 
-scaler_df.to_csv("data_processed/standard_scaler_parameters.csv", index=False)
+output_path = paths.processed_dir / "standard_scaler_parameters.csv"
+scaler_df.to_csv(output_path, index=False)
+print(f"Saved to: {output_path}")

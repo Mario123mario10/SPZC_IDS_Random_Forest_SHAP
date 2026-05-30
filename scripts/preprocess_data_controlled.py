@@ -1,5 +1,4 @@
 from __future__ import annotations
-print("Importing libraries...")
 
 from pathlib import Path
 
@@ -10,18 +9,24 @@ from sklearn.model_selection import train_test_split
 import joblib
 from sklearn.preprocessing import StandardScaler
 
+from variant_paths import BASE_PROCESSED_DIR, get_variant_paths
+
 
 RAW_DIR = Path("data_raw")
-PROCESSED_DIR = Path("data_processed")
+VARIANT = "controlled"
+PATHS = get_variant_paths(VARIANT)
+CLEANED_DIR = BASE_PROCESSED_DIR
+PROCESSED_DIR = PATHS.processed_dir
 
-MONDAY_CLEAN_FILE = PROCESSED_DIR / "Monday-WorkingHours.pcap_ISCX_clean.csv"
-FRIDAY_DDOS_CLEAN_FILE = PROCESSED_DIR / "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX_clean.csv"
+MONDAY_CLEAN_FILE = CLEANED_DIR / "Monday-WorkingHours.pcap_ISCX_clean.csv"
+FRIDAY_DDOS_CLEAN_FILE = CLEANED_DIR / "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX_clean.csv"
 
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
+
 def count_infinite_values(df: pd.DataFrame) -> pd.Series:
-    """Zwraca liczbę wartości inf/-inf w kolumnach numerycznych."""
+    """Return the number of inf/-inf values in numeric columns."""
     numeric_df = df.select_dtypes(include=[np.number])
 
     if numeric_df.empty:
@@ -31,20 +36,20 @@ def count_infinite_values(df: pd.DataFrame) -> pd.Series:
 
 
 def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Czyści DataFrame i zwraca oczyszczone dane oraz statystyki."""
+    """Clean a DataFrame and return cleaned data with cleaning statistics."""
     rows_before = len(df)
 
-    # CICIDS2017 często ma spacje na początku nazw kolumn, np. " Flow Packets/s".
+    # CICIDS2017 often has leading spaces in column names, e.g. " Flow Packets/s".
     df = df.copy()
     df.columns = df.columns.str.strip()
 
     missing_before = int(df.isna().sum().sum())
     infinite_before = int(count_infinite_values(df).sum())
 
-    # Zamiana wartości nieskończonych na brakujące.
+    # Convert infinite values to missing values.
     df = df.replace([np.inf, -np.inf], np.nan)
 
-    # Usunięcie wszystkich rekordów z brakami.
+    # Remove all rows with missing values.
     df_clean = df.dropna().reset_index(drop=True)
 
     rows_after = len(df_clean)
@@ -65,13 +70,13 @@ def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
 
 
 def preprocess_file(csv_path: Path) -> dict[str, object]:
-    """Czyści pojedynczy plik CSV i zapisuje wynik w data_processed/."""
+    """Clean one CSV file and write the result to data_processed/."""
     print(f"\nProcessing: {csv_path}")
 
     df = pd.read_csv(csv_path, low_memory=False)
     df_clean, stats = clean_dataframe(df)
 
-    output_path = PROCESSED_DIR / f"{csv_path.stem}_clean.csv"
+    output_path = CLEANED_DIR / f"{csv_path.stem}_clean.csv"
     df_clean.to_csv(output_path, index=False)
 
     print(f"Saved: {output_path}")
@@ -87,13 +92,14 @@ def preprocess_file(csv_path: Path) -> dict[str, object]:
         **stats,
     }
 
+
 def load_baseline_dataset() -> pd.DataFrame:
-    """Tworzy bazowy zbiór: Monday benign + Friday DDoS."""
+    """Create the controlled dataset: Monday benign + Friday benign + Friday DDoS."""
     if not MONDAY_CLEAN_FILE.exists():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {MONDAY_CLEAN_FILE}")
+        raise FileNotFoundError(f"File not found: {MONDAY_CLEAN_FILE}")
 
     if not FRIDAY_DDOS_CLEAN_FILE.exists():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {FRIDAY_DDOS_CLEAN_FILE}")
+        raise FileNotFoundError(f"File not found: {FRIDAY_DDOS_CLEAN_FILE}")
 
     monday_df = pd.read_csv(MONDAY_CLEAN_FILE, low_memory=False)
     friday_df = pd.read_csv(FRIDAY_DDOS_CLEAN_FILE, low_memory=False)
@@ -102,33 +108,46 @@ def load_baseline_dataset() -> pd.DataFrame:
     friday_df.columns = friday_df.columns.str.strip()
 
     if "Label" not in monday_df.columns:
-        raise KeyError(f"Brakuje kolumny Label w pliku {MONDAY_CLEAN_FILE}")
+        raise KeyError(f"Missing Label column in file {MONDAY_CLEAN_FILE}")
 
     if "Label" not in friday_df.columns:
-        raise KeyError(f"Brakuje kolumny Label w pliku {FRIDAY_DDOS_CLEAN_FILE}")
+        raise KeyError(f"Missing Label column in file {FRIDAY_DDOS_CLEAN_FILE}")
 
     monday_df["Label"] = monday_df["Label"].astype(str).str.strip()
     friday_df["Label"] = friday_df["Label"].astype(str).str.strip()
 
-    # Z poniedziałku bierzemy tylko ruch benign.
+    # Monday contributes benign traffic.
     monday_benign_df = monday_df[monday_df["Label"].str.lower() == "benign"].copy()
 
-    # Z piątku bierzemy tylko rekordy DDoS.
+    # Friday contributes both DDoS and benign traffic.
     friday_ddos_df = friday_df[friday_df["Label"].str.lower() == "ddos"].copy()
+    friday_benign_df = friday_df[friday_df["Label"].str.lower() == "benign"].copy()
 
     if monday_benign_df.empty:
-        raise ValueError("Po filtracji Monday nie znaleziono rekordów Benign.")
+        raise ValueError("No Benign records found after filtering Monday data.")
 
     if friday_ddos_df.empty:
-        raise ValueError("Po filtracji Friday nie znaleziono rekordów DDoS.")
+        raise ValueError("No DDoS records found after filtering Friday data.")
 
-    # Ujednolicenie nazw etykiet.
+    # Normalize label names.
     monday_benign_df["Label"] = "Benign"
     friday_ddos_df["Label"] = "DDoS"
+    friday_benign_df["Label"] = "Benign"
 
-    combined_df = pd.concat([monday_benign_df, friday_ddos_df], ignore_index=True)
+    combined_df = pd.concat([monday_benign_df, friday_benign_df, friday_ddos_df], ignore_index=True)
 
-    print("\nLiczność klas w bazowym zbiorze:")
+    print("Class counts before deduplication:")
+    print(combined_df["Label"].value_counts())
+
+    # Remove duplicate rows before the train/test split.
+    rows_before_dedup = len(combined_df)
+    combined_df = combined_df.drop_duplicates(ignore_index=True)
+    rows_after_dedup = len(combined_df)
+    print(
+        f"Removed duplicates: {rows_before_dedup - rows_after_dedup} ({(rows_before_dedup - rows_after_dedup) / rows_before_dedup * 100:.2f}%)"
+    )
+
+    print("Class counts after deduplication:")
     print(combined_df["Label"].value_counts())
 
     combined_df.to_csv(PROCESSED_DIR / "baseline_ddos_dataset.csv", index=False)
@@ -136,18 +155,20 @@ def load_baseline_dataset() -> pd.DataFrame:
 
     return combined_df
 
+
 def main() -> None:
     if not RAW_DIR.exists():
         raise FileNotFoundError(
-            f"Brakuje katalogu {RAW_DIR}. Utwórz go i wrzuć tam surowe pliki CSV."
+            f"Missing {RAW_DIR} directory. Create it and place the raw CSV files there."
         )
 
+    CLEANED_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     csv_files = sorted(RAW_DIR.glob("*.csv"))
 
     if not csv_files:
-        raise FileNotFoundError(f"Nie znaleziono plików CSV w katalogu {RAW_DIR}.")
+        raise FileNotFoundError(f"No CSV files found in {RAW_DIR}.")
 
     reports = []
 
@@ -155,44 +176,40 @@ def main() -> None:
         result = preprocess_file(csv_path)
         reports.append(result)
 
-
     report_df = pd.DataFrame(reports)
-    report_path = PROCESSED_DIR / "cleaning_report.csv"
+    report_path = CLEANED_DIR / "cleaning_report.csv"
     report_df.to_csv(report_path, index=False)
-   
 
-    # Dodatkowe zabezpieczenie: jeśli po czyszczeniu zostały braki/inf, zatrzymaj skrypt.
+    # Safety check: stop if missing or infinite values remain after cleaning.
     total_missing_after = int(report_df["missing_after"].sum())
     total_infinite_after = int(report_df["infinite_after"].sum())
 
-    assert total_missing_after == 0, "Po czyszczeniu nadal istnieją brakujące wartości."
-    assert total_infinite_after == 0, "Po czyszczeniu nadal istnieją wartości nieskończone."
+    assert total_missing_after == 0, "Missing values remain after cleaning."
+    assert total_infinite_after == 0, "Infinite values remain after cleaning."
 
     print(f"Cleaning report saved to: {report_path}")
 
-    print("\nTworzenie bazowego zbioru: Monday Benign + Friday DDoS")
+    print("Creating controlled dataset: Monday Benign + Friday Benign + Friday DDoS")
     combined_df = load_baseline_dataset()
-    print(f"Rozmiar bazowego zbioru: {combined_df.shape}")
+    print(f"Controlled dataset shape: {combined_df.shape}")
 
     print("Encoding labels: Benign -> 0, Attack/DDoS -> 1")
 
     combined_df["Label"] = combined_df["Label"].astype(str).str.strip()
 
-    y = combined_df["Label"].apply(
-        lambda label: 0 if label.lower() == "benign" else 1
-    )
+    y = combined_df["Label"].apply(lambda label: 0 if label.lower() == "benign" else 1)
 
     X = combined_df.drop(columns=["Label"])
 
-    # Zabezpieczenie: Random Forest i StandardScaler oczekują cech numerycznych.
+    # Safety check: Random Forest and StandardScaler expect numeric features.
     non_numeric_columns = X.select_dtypes(exclude=[np.number]).columns.tolist()
     if non_numeric_columns:
         raise ValueError(
-            "W zbiorze cech znajdują się nienumeryczne kolumny: "
-            f"{non_numeric_columns}. Usuń je albo zakoduj przed skalowaniem."
+            "The feature set contains non-numeric columns: "
+            f"{non_numeric_columns}. Remove or encode them before scaling."
         )
 
-    print("Dzielenie na zbiór treningowy i testowy")
+    print("Splitting into train and test sets...")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -202,7 +219,7 @@ def main() -> None:
         stratify=y,
     )
 
-    print("Scaling features with StandardScaler")
+    print("Scaling features with StandardScaler...")
 
     scaler = StandardScaler()
 
@@ -228,7 +245,7 @@ def main() -> None:
     test_df["Label"] = y_test.values
     test_df.to_csv(PROCESSED_DIR / "test.csv", index=False)
 
-    print(f"Zapisano train.csv i test.csv w {PROCESSED_DIR}")
+    print(f"Saved train.csv and test.csv in {PROCESSED_DIR}")
     print(f"{PROCESSED_DIR / 'train.csv'}: {train_df.shape}")
     print(f"{PROCESSED_DIR / 'test.csv'}: {test_df.shape}")
 
@@ -237,9 +254,8 @@ def main() -> None:
 
     print("\nClass distribution in test:")
     print(test_df["Label"].value_counts())
-    
-    print("\nPreprocessing finished.")
 
+    print("\nPreprocessing finished successfully.")
 
 
 if __name__ == "__main__":

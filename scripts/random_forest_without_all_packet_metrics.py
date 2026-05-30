@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+import argparse
 
 import joblib
 import pandas as pd
@@ -14,11 +14,7 @@ from sklearn.metrics import (
     recall_score,
 )
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
-
-TRAIN_FILE = PROCESSED_DIR / "train.csv"
-TEST_FILE = PROCESSED_DIR / "test.csv"
+from variant_paths import add_variant_argument, get_variant_paths
 
 RANDOM_STATE = 42
 
@@ -40,14 +36,12 @@ SIZE_VOLUME_RATE_HEADER_FEATURES = [
     "Average Packet Size",
     "Avg Fwd Segment Size",
     "Avg Bwd Segment Size",
-
     # byte/volume
     "Total Length of Fwd Packets",
     "Total Length of Bwd Packets",
     "Subflow Fwd Bytes",
     "Subflow Bwd Bytes",
     "Flow Bytes/s",
-
     # packet count/rate
     "Total Fwd Packets",
     "Total Backward Packets",
@@ -57,7 +51,6 @@ SIZE_VOLUME_RATE_HEADER_FEATURES = [
     "Fwd Packets/s",
     "Bwd Packets/s",
     "act_data_pkt_fwd",
-
     # header/window/segment
     "Fwd Header Length",
     "Fwd Header Length.1",
@@ -67,25 +60,37 @@ SIZE_VOLUME_RATE_HEADER_FEATURES = [
     "min_seg_size_forward",
 ]
 
-def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    if not TRAIN_FILE.exists():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {TRAIN_FILE}")
 
-    if not TEST_FILE.exists():
-        raise FileNotFoundError(f"Nie znaleziono pliku: {TEST_FILE}")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
-    train_df = pd.read_csv(TRAIN_FILE)
-    test_df = pd.read_csv(TEST_FILE)
+
+def load_train_test_data():
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    train_file = paths.train_file
+    test_file = paths.test_file
+
+    if not train_file.exists():
+        raise FileNotFoundError(f"File not found: {train_file}")
+
+    if not test_file.exists():
+        raise FileNotFoundError(f"File not found: {test_file}")
+
+    train_df = pd.read_csv(train_file)
+    test_df = pd.read_csv(test_file)
 
     if "Label" not in train_df.columns:
-        raise KeyError(f"Brakuje kolumny Label w pliku {TRAIN_FILE}")
+        raise KeyError(f"Missing Label column in file {train_file}")
 
     if "Label" not in test_df.columns:
-        raise KeyError(f"Brakuje kolumny Label w pliku {TEST_FILE}")
+        raise KeyError(f"Missing Label column in file {test_file}")
 
     X_train = train_df.drop(columns=["Label"])
     y_train = train_df["Label"].astype(int)
-
 
     X_test = test_df.drop(columns=["Label"])
     y_test = test_df["Label"].astype(int)
@@ -93,14 +98,14 @@ def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Se
     X_train = X_train.drop(columns=SIZE_VOLUME_RATE_HEADER_FEATURES)
     X_test = X_test.drop(columns=SIZE_VOLUME_RATE_HEADER_FEATURES)
 
-    return X_train, X_test, y_train, y_test
+    return X_train, X_test, y_train, y_test, paths
 
 
 def main() -> None:
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-
     print("Loading preprocessed train/test data...")
-    X_train, X_test, y_train, y_test = load_train_test_data()
+    X_train, X_test, y_train, y_test, paths = load_train_test_data()
+    paths.model_dir.mkdir(parents=True, exist_ok=True)
+    paths.processed_dir.mkdir(parents=True, exist_ok=True)
 
     print("Training Random Forest...")
 
@@ -152,8 +157,9 @@ def main() -> None:
             }
         ]
     )
+    metrics_path = paths.processed_dir / "random_forest_without_all_packet_metrics.csv"
     metrics_df.to_csv(
-        PROCESSED_DIR / "random_forest_without_all_packet_metrics.csv",
+        metrics_path,
         index=False,
     )
 
@@ -163,17 +169,15 @@ def main() -> None:
         columns=["pred_benign", "pred_attack"],
     )
 
-    cm_df.to_csv(
-        PROCESSED_DIR / "random_forest_without_all_packet_confusion_matrix.csv",
-    )
+    cm_path = paths.processed_dir / "random_forest_without_all_packet_confusion_matrix.csv"
+    cm_df.to_csv(cm_path)
 
-    model_path = MODEL_DIR / "random_forest_without_all_packet.joblib"
+    model_path = paths.model_dir / "random_forest_without_all_packet.joblib"
     joblib.dump(model, model_path)
 
-
     print(f"\nSaved model to: {model_path}")
-    print(f"Saved metrics to: {PROCESSED_DIR / 'random_forest_without_all_packet_metrics.csv'}")
-    print(f"Saved confusion matrix to: {PROCESSED_DIR / 'random_forest_without_all_packet_confusion_matrix.csv'}")
+    print(f"Saved metrics to: {metrics_path}")
+    print(f"Saved confusion matrix to: {cm_path}")
 
 
 if __name__ == "__main__":

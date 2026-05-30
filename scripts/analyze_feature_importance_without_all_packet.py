@@ -1,26 +1,38 @@
-from pathlib import Path
+from __future__ import annotations
+
+import argparse
 
 import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
+from variant_paths import add_variant_argument, get_variant_paths
 
-MODEL_PATH = MODEL_DIR / "random_forest_without_all_packet.joblib"
-TRAIN_PATH = PROCESSED_DIR / "train.csv"
 
-CSV_OUTPUT_PATH = PROCESSED_DIR / "random_forest_without_all_packet_feature_importance.csv"
-PLOT_OUTPUT_PATH = PROCESSED_DIR / "random_forest_without_all_packet_feature_importance_top30.png"
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def main() -> None:
-    model = joblib.load(MODEL_PATH)
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    model_path = paths.model_dir / "random_forest_without_all_packet.joblib"
+    csv_output_path = (
+        paths.processed_dir / "random_forest_without_all_packet_feature_importance.csv"
+    )
+    plot_output_path = (
+        paths.processed_dir / "random_forest_without_all_packet_feature_importance_top30.png"
+    )
+
+    model = joblib.load(model_path)
 
     if not hasattr(model, "feature_names_in_"):
         raise AttributeError(
-            "Model nie ma atrybutu feature_names_in_. "
-            "Prawdopodobnie był trenowany na numpy array zamiast pandas DataFrame."
+            "Model does not expose feature_names_in_. "
+            "It was probably trained on a NumPy array instead of a pandas DataFrame."
         )
 
     feature_names = model.feature_names_in_
@@ -31,8 +43,7 @@ def main() -> None:
 
     if len(feature_names) != len(importances):
         raise ValueError(
-            f"Mismatch: {len(feature_names)} feature names, "
-            f"but {len(importances)} importances."
+            f"Mismatch: {len(feature_names)} feature names, but {len(importances)} importances."
         )
 
     importance_df = pd.DataFrame(
@@ -42,8 +53,7 @@ def main() -> None:
         }
     ).sort_values("importance", ascending=False)
 
-
-    importance_df.to_csv(CSV_OUTPUT_PATH, index=False)
+    importance_df.to_csv(csv_output_path, index=False)
 
     top_n = 30
     top_df = importance_df.head(top_n).sort_values("importance")
@@ -54,10 +64,10 @@ def main() -> None:
     plt.ylabel("Feature")
     plt.title(f"Top {top_n} Random Forest feature importances")
     plt.tight_layout()
-    plt.savefig(PLOT_OUTPUT_PATH, dpi=300)
+    plt.savefig(plot_output_path, dpi=300)
 
-    print(f"Saved CSV to: {CSV_OUTPUT_PATH}")
-    print(f"Saved plot to: {PLOT_OUTPUT_PATH}")
+    print(f"Saved CSV to: {csv_output_path}")
+    print(f"Saved plot to: {plot_output_path}")
 
     print("\nTop 30 features:")
     print(importance_df.head(30).to_string(index=False))

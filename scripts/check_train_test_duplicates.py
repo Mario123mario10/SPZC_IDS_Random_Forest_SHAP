@@ -1,16 +1,22 @@
-from pathlib import Path
+import argparse
 
 import pandas as pd
 
-PROCESSED_DIR = Path("data_processed")
+from variant_paths import add_variant_argument, get_variant_paths
 
-TRAIN_PATH = PROCESSED_DIR / "train.csv"
-TEST_PATH = PROCESSED_DIR / "test.csv"
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def main() -> None:
-    train_df = pd.read_csv(TRAIN_PATH)
-    test_df = pd.read_csv(TEST_PATH)
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
+
+    train_df = pd.read_csv(paths.train_file)
+    test_df = pd.read_csv(paths.test_file)
 
     train_hashes = pd.util.hash_pandas_object(train_df, index=False)
     test_hashes = pd.util.hash_pandas_object(test_df, index=False)

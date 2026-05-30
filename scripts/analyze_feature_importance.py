@@ -1,23 +1,30 @@
-from pathlib import Path
+import argparse
 
 import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 
-PROCESSED_DIR = Path("data_processed")
-MODEL_DIR = Path("models")
+from variant_paths import add_variant_argument, get_variant_paths
 
-MODEL_PATH = MODEL_DIR / "random_forest_baseline.joblib"
-TRAIN_PATH = PROCESSED_DIR / "train.csv"
 
-CSV_OUTPUT_PATH = PROCESSED_DIR / "random_forest_feature_importance.csv"
-PLOT_OUTPUT_PATH = PROCESSED_DIR / "random_forest_feature_importance_top30.png"
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    add_variant_argument(parser)
+    return parser.parse_args()
 
 
 def main() -> None:
-    model = joblib.load(MODEL_PATH)
+    args = parse_args()
+    paths = get_variant_paths(args.variant)
 
-    train_df = pd.read_csv(TRAIN_PATH)
+    model_path = paths.random_forest_model_file
+    train_path = paths.train_file
+    csv_output_path = paths.processed_dir / "random_forest_feature_importance.csv"
+    plot_output_path = paths.processed_dir / "random_forest_feature_importance_top30.png"
+
+    model = joblib.load(model_path)
+
+    train_df = pd.read_csv(train_path)
     X_train = train_df.drop(columns=["Label"])
 
     importance_df = pd.DataFrame(
@@ -27,7 +34,7 @@ def main() -> None:
         }
     ).sort_values("importance", ascending=False)
 
-    importance_df.to_csv(CSV_OUTPUT_PATH, index=False)
+    importance_df.to_csv(csv_output_path, index=False)
 
     top_n = 30
     top_df = importance_df.head(top_n).sort_values("importance")
@@ -38,10 +45,10 @@ def main() -> None:
     plt.ylabel("Feature")
     plt.title(f"Top {top_n} Random Forest feature importances")
     plt.tight_layout()
-    plt.savefig(PLOT_OUTPUT_PATH, dpi=300)
+    plt.savefig(plot_output_path, dpi=300)
 
-    print(f"Saved CSV to: {CSV_OUTPUT_PATH}")
-    print(f"Saved plot to: {PLOT_OUTPUT_PATH}")
+    print(f"Saved CSV to: {csv_output_path}")
+    print(f"Saved plot to: {plot_output_path}")
 
     print("\nTop 30 features:")
     print(importance_df.head(30).to_string(index=False))
