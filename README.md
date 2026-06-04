@@ -20,9 +20,10 @@ terminal.
 The full CICIDS2017 dataset is not stored in the repository because of file
 size. Download the CSV files from the Canadian Institute for Cybersecurity and
 place them in:
-
 ```text
 data_raw/
+  CICIDS2017/
+  CSE-CIC-IDS2018/
 ```
 
 After preprocessing, generated files are written to:
@@ -37,8 +38,12 @@ Variant-specific outputs are stored separately:
 ```text
 data_processed/paper_baseline/
 data_processed/controlled/
+data_processed/portscan/
+data_processed/bruteforce/
 models/paper_baseline/
 models/controlled/
+models/portscan/
+models/bruteforce/
 ```
 
 Directory structure:

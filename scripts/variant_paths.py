@@ -4,7 +4,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
-VALID_VARIANTS = ("paper_baseline", "controlled")
+VALID_VARIANTS = ("paper_baseline", "controlled", "portscan", "bruteforce")
 
 BASE_PROCESSED_DIR = Path("data_processed")
 BASE_MODEL_DIR = Path("models")
@@ -15,6 +15,7 @@ class VariantPaths:
     variant: str
     processed_dir: Path
     model_dir: Path
+    cleaned_data_dir: Path
 
     @property
     def train_file(self) -> Path:
@@ -35,6 +36,10 @@ class VariantPaths:
     @property
     def random_forest_model_file(self) -> Path:
         return self.model_dir / "random_forest.joblib"
+    
+    @property
+    def cleaning_report_file(self) -> Path:
+        return self.processed_dir / "cleaning_report.csv"
 
 
 def validate_variant(variant: str) -> str:
@@ -50,6 +55,7 @@ def get_variant_paths(variant: str) -> VariantPaths:
         variant=variant,
         processed_dir=BASE_PROCESSED_DIR / variant,
         model_dir=BASE_MODEL_DIR / variant,
+        cleaned_data_dir=BASE_PROCESSED_DIR / variant / "cleaned",
     )
 
 
