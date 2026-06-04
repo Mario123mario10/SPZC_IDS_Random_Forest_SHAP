@@ -83,48 +83,52 @@ def process_and_combine_data(
 
     combined_df["original_label"] = combined_df["label"].str.strip()
 
-    bruteforce_labels = [
-        "ftp-patator",  
-        "ssh-patator",
-        "ftp-bruteforce",
-        "ssh-bruteforce",
-    ]
-
     def map_label(label):
-        if str(label).strip().lower() in bruteforce_labels:
-            return "BruteForce"
-        elif str(label).strip().lower() == "benign":
+        processed_label = str(label).strip().lower()
+        if processed_label == "benign":
             return "Benign"
-        else:
-            return "Other"
 
-    combined_df["label"] = combined_df["label"].apply(map_label)
+        is_web_attack_keyword = "web attack" in processed_label
+        is_brute_force_keyword = "brute force" in processed_label
+        is_xss_keyword = "xss" in processed_label
 
-    combined_df = combined_df[combined_df["label"].isin(["Benign", "BruteForce"])].copy()
+        is_bruteforce_web_keyword = "bruteforce" in processed_label and "web" in processed_label
+        is_bruteforce_xss_keyword = "bruteforce" in processed_label and "xss" in processed_label
 
-    print("\nClass counts in the BruteForce dataset:")
+        if is_web_attack_keyword and (is_brute_force_keyword or is_xss_keyword):
+            return "WebAttack"
+
+        if is_bruteforce_web_keyword or is_bruteforce_xss_keyword:
+            return "WebAttack"
+
+        return "Other"
+
+    combined_df["label"] = combined_df["original_label"].apply(map_label)
+
+    combined_df = combined_df[combined_df["label"].isin(["Benign", "WebAttack"])].copy()
+
+    print("\nClass counts in the WebAttack dataset:")
     print(combined_df["label"].value_counts())
 
     if combined_df["label"].nunique() < 2:
         raise ValueError(
             "Only one class found after labeling. For binary classification, "
-            "please provide files containing both 'Benign' traffic and 'BruteForce' attack traffic."
+            "please provide files containing both 'Benign' traffic and 'WebAttack' attack traffic."
         )
 
     processed_dir.mkdir(parents=True, exist_ok=True)
-    combined_df.to_csv(processed_dir / "bruteforce_dataset.csv", index=False)
-    combined_df["label"].value_counts().to_csv(processed_dir / "bruteforce_class_distribution.csv")
+    combined_df.to_csv(processed_dir / "web_attacks_dataset.csv", index=False)
+    combined_df["label"].value_counts().to_csv(processed_dir / "web_attacks_class_distribution.csv")
 
     return combined_df
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Preprocess data for BruteForce detection.")
+    parser = argparse.ArgumentParser(description="Preprocess data for Web Attack detection.")
 
     default_files = [
-        "data_raw/Friday-WorkingHours-Afternoon-Patator.pcap_ISCX.csv",
-        "data_raw/02-14-2018.csv",
-        "data_raw/02-20-2018.csv",
+        "data_raw/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv",
+        "data_raw/02-21-2018.csv",
         "data_raw/Monday-WorkingHours.pcap_ISCX.csv",
     ]
 
@@ -140,30 +144,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    variant = "bruteforce"
+    variant = "web_attacks"
     PATHS = get_variant_paths(variant)
     PROCESSED_DIR = PATHS.processed_dir
     CLEANED_DATA_DIR = PATHS.cleaned_data_dir
 
     csv_files = [Path(f) for f in args.files]
-
-    attack_default_files = {
-        "data_raw/Friday-WorkingHours-Afternoon-Patator.pcap_ISCX.csv",
-        "data_raw/02-14-2018.csv",
-        "data_raw/02-20-2018.csv",
-    }
-    used_files_str = {str(f) for f in csv_files}
-    has_attack_file = any(f in used_files_str for f in attack_default_files)
-
-    if not csv_files or not has_attack_file:
-        missing_files = attack_default_files - used_files_str
-        raise FileNotFoundError(
-            "Could not find the required BruteForce attack files in your 'data_raw/' directory.\n"
-            "The script expects at least one of the following attack files to be present:\n"
-            + "\n".join(f"- {f}" for f in sorted(attack_default_files))
-            + "\n\nBased on your current files, these seem to be missing:\n"
-            + "\n".join(f"- {f}" for f in sorted(missing_files))
-        )
+    for f in csv_files:
+        if not f.exists():
+            raise FileNotFoundError(
+                f"Input file not found: {f}\n"
+                f"Please check the path is correct relative to the current directory: {Path.cwd()}"
+            )
 
     processing_source_str = f"specific files: {[str(f) for f in csv_files]}"
 

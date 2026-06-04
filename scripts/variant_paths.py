@@ -4,7 +4,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
-VALID_VARIANTS = ("paper_baseline", "controlled", "portscan", "bruteforce")
+VALID_VARIANTS = ("paper_baseline", "controlled", "portscan", "bruteforce", "generalization_test", "web_attacks")
 
 BASE_PROCESSED_DIR = Path("data_processed")
 BASE_MODEL_DIR = Path("models")
@@ -24,6 +24,10 @@ class VariantPaths:
     @property
     def test_file(self) -> Path:
         return self.processed_dir / "test.csv"
+
+    @property
+    def test_file_external(self) -> Path:
+        return self.processed_dir / "test_external.csv"
 
     @property
     def baseline_dataset_file(self) -> Path:
@@ -72,6 +76,7 @@ def add_variant_argument(
         help=(
             "Data/model variant. "
             "paper_baseline recreates the paper assumptions, "
-            "controlled uses the corrected preprocessing pipeline."
+            "controlled uses the corrected preprocessing pipeline, "
+            "generalization_test trains on 2017 data and tests on 2017 and 2018 data."
         ),
     )

@@ -15,7 +15,7 @@ from sklearn.metrics import (
 from analyze_shap_baseline import generate_shap_report
 from variant_paths import get_variant_paths
 
-VARIANT = "bruteforce"
+VARIANT = "web_attacks"
 PATHS = get_variant_paths(VARIANT)
 PROCESSED_DIR = PATHS.processed_dir
 MODEL_DIR = PATHS.model_dir
@@ -28,10 +28,10 @@ RANDOM_STATE = 42
 
 def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
     if not TRAIN_FILE.exists():
-        raise FileNotFoundError(f"File not found: {TRAIN_FILE}. Run preprocess_data_bruteforce.py first.")
+        raise FileNotFoundError(f"File not found: {TRAIN_FILE}. Run preprocess_data_web_attacks.py first.")
 
     if not TEST_FILE.exists():
-        raise FileNotFoundError(f"File not found: {TEST_FILE}. Run preprocess_data_bruteforce.py first.")
+        raise FileNotFoundError(f"File not found: {TEST_FILE}. Run preprocess_data_web_attacks.py first.")
 
     train_df = pd.read_csv(TRAIN_FILE)
     test_df = pd.read_csv(TEST_FILE)
@@ -94,14 +94,7 @@ def main() -> None:
     print(cm)
 
     print("\nClassification report:")
-    print(
-        classification_report(
-            y_test,
-            y_pred,
-            target_names=["Benign", "Attack"],
-            zero_division=0,
-        )
-    )
+    print(classification_report(y_test, y_pred, target_names=["Benign", "Attack"], zero_division=0))
 
     metrics_df = pd.DataFrame([{"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}])
     metrics_df.to_csv(PROCESSED_DIR / "random_forest_metrics.csv", index=False)
@@ -143,11 +136,7 @@ def main() -> None:
     print(f"\nGenerating SHAP report for the trained '{VARIANT}' model...")
     test_df = X_test.copy()
     test_df["Label"] = y_test.values
-    generate_shap_report(
-        model,
-        test_df,
-        PROCESSED_DIR / "shap_random_forest",
-    )
+    generate_shap_report(model, test_df, PROCESSED_DIR / "shap_random_forest")
 
 
 if __name__ == "__main__":
