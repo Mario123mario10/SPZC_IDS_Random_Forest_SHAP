@@ -1,7 +1,8 @@
 #!/usr/bin/env just --justfile
 
 # Default task to run if no other is specified.
-default: all
+default:
+	@just -l
 
 # Check if uv is installed
 check-uv:
@@ -52,15 +53,49 @@ web_attacks: check-data
 	uv run python scripts/preprocess_data_web_attacks.py
 	uv run python scripts/train_random_forest_web_attacks.py
 
-# Run the full dataset variant with sampling
-full_dataset: check-data
-	uv run python scripts/preprocess_data_full_dataset.py
-	uv run python scripts/train_random_forest_full_dataset.py
+# Prepare the final CICIDS2017 binary dataset.
+preprocess-cicids2017: check-data
+	uv run python scripts/01_preprocess_cicids2017_binary.py
 
-# Run the generalization test (train on 2017, test on 2018)
-generalization: check-data
-	uv run python scripts/preprocess_data_generalization_test.py
-	uv run python scripts/train_and_evaluate_generalization.py
+# Train the final Random Forest binary IDS model.
+train-binary: check-data
+	uv run python scripts/02_train_random_forest_binary.py
 
-# Run the main variants.
-all: bruteforce web_attacks full_dataset generalization portscan paper controlled
+# Prepare CSE-CIC-IDS2018 as an external-only test set.
+preprocess-cse2018: check-data
+	uv run python scripts/03_preprocess_cse_cic_ids2018_external.py
+
+# Evaluate the final model on internal and external test sets.
+evaluate-binary: check-data
+	uv run python scripts/04_evaluate_binary_model.py
+
+# Fast smoke-test evaluation on a limited number of rows per dataset.
+evaluate-binary-quick: check-data
+	uv run python scripts/04_evaluate_binary_model.py --max-rows 200000 --skip-predictions --name-suffix _quick
+
+# Run SHAP analysis for the final binary model.
+shap-binary: check-data
+	uv run python scripts/05_analyze_shap_binary.py
+
+# Fast smoke-test SHAP analysis on a small sample.
+shap-binary-quick: check-data
+	uv run python scripts/05_analyze_shap_binary.py --max-rows 200000 --samples-per-family 300 --name-suffix _quick
+
+# Run the final model pipeline without SHAP.
+main: preprocess-cicids2017 train-binary preprocess-cse2018 evaluate-binary
+
+# Run the final model pipeline including SHAP.
+main-with-shap: main shap-binary
+
+# Run the final model pipeline with quick evaluation and quick SHAP.
+main-quick: preprocess-cicids2017 train-binary preprocess-cse2018 evaluate-binary-quick shap-binary-quick
+
+# Backward-compatible aliases for the final model pipeline.
+full_dataset: main
+generalization: main
+
+# Run legacy exploratory variants.
+legacy-all: bruteforce web_attacks portscan paper controlled
+
+# Run the default final pipeline.
+all: main
