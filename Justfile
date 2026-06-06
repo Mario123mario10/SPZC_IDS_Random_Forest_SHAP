@@ -99,3 +99,7 @@ legacy-all: bruteforce web_attacks portscan paper controlled
 
 # Run the default final pipeline.
 all: main
+
+# Summarize results from all variants
+summarize-results: check-data
+	uv run python scripts/summarize_variant_results.py
