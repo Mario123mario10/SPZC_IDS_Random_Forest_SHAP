@@ -15,18 +15,13 @@ from variant_paths import BASE_PROCESSED_DIR, get_variant_paths
 RAW_DIR = Path("data_raw")
 VARIANT = "controlled"
 PATHS = get_variant_paths(VARIANT)
-CLEANED_DIR = BASE_PROCESSED_DIR
 PROCESSED_DIR = PATHS.processed_dir
-
-MONDAY_CLEAN_FILE = CLEANED_DIR / "Monday-WorkingHours.pcap_ISCX_clean.csv"
-FRIDAY_DDOS_CLEAN_FILE = CLEANED_DIR / "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX_clean.csv"
 
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
 
 def count_infinite_values(df: pd.DataFrame) -> pd.Series:
-    """Return the number of inf/-inf values in numeric columns."""
     numeric_df = df.select_dtypes(include=[np.number])
 
     if numeric_df.empty:
@@ -36,20 +31,16 @@ def count_infinite_values(df: pd.DataFrame) -> pd.Series:
 
 
 def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Clean a DataFrame and return cleaned data with cleaning statistics."""
     rows_before = len(df)
 
-    # CICIDS2017 often has leading spaces in column names, e.g. " Flow Packets/s".
     df = df.copy()
     df.columns = df.columns.str.strip()
 
     missing_before = int(df.isna().sum().sum())
     infinite_before = int(count_infinite_values(df).sum())
 
-    # Convert infinite values to missing values.
     df = df.replace([np.inf, -np.inf], np.nan)
 
-    # Remove all rows with missing values.
     df_clean = df.dropna().reset_index(drop=True)
 
     rows_after = len(df_clean)
@@ -69,57 +60,21 @@ def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     return df_clean, stats
 
 
-def preprocess_file(csv_path: Path) -> dict[str, object]:
-    """Clean one CSV file and write the result to data_processed/."""
-    print(f"\nProcessing: {csv_path}")
-
-    df = pd.read_csv(csv_path, low_memory=False)
-    df_clean, stats = clean_dataframe(df)
-
-    output_path = CLEANED_DIR / f"{csv_path.stem}_clean.csv"
-    df_clean.to_csv(output_path, index=False)
-
-    print(f"Saved: {output_path}")
-    print(f"Rows before: {stats['rows_before']}")
-    print(f"Rows after:  {stats['rows_after']}")
-    print(f"Removed:     {stats['removed_rows']}")
-    print(f"Missing after cleaning:  {stats['missing_after']}")
-    print(f"Infinite after cleaning: {stats['infinite_after']}")
-
-    return {
-        "file": csv_path.name,
-        "output_file": output_path.name,
-        **stats,
-    }
-
-
-def load_baseline_dataset() -> pd.DataFrame:
-    """Create the controlled dataset: Monday benign + Friday benign + Friday DDoS."""
-    if not MONDAY_CLEAN_FILE.exists():
-        raise FileNotFoundError(f"File not found: {MONDAY_CLEAN_FILE}")
-
-    if not FRIDAY_DDOS_CLEAN_FILE.exists():
-        raise FileNotFoundError(f"File not found: {FRIDAY_DDOS_CLEAN_FILE}")
-
-    monday_df = pd.read_csv(MONDAY_CLEAN_FILE, low_memory=False)
-    friday_df = pd.read_csv(FRIDAY_DDOS_CLEAN_FILE, low_memory=False)
-
+def load_baseline_dataset(monday_df: pd.DataFrame, friday_df: pd.DataFrame) -> pd.DataFrame:
     monday_df.columns = monday_df.columns.str.strip()
     friday_df.columns = friday_df.columns.str.strip()
 
     if "Label" not in monday_df.columns:
-        raise KeyError(f"Missing Label column in file {MONDAY_CLEAN_FILE}")
+        raise KeyError("Missing Label column in Monday data.")
 
     if "Label" not in friday_df.columns:
-        raise KeyError(f"Missing Label column in file {FRIDAY_DDOS_CLEAN_FILE}")
+        raise KeyError("Missing Label column in Friday DDoS data.")
 
     monday_df["Label"] = monday_df["Label"].astype(str).str.strip()
     friday_df["Label"] = friday_df["Label"].astype(str).str.strip()
 
-    # Monday contributes benign traffic.
     monday_benign_df = monday_df[monday_df["Label"].str.lower() == "benign"].copy()
 
-    # Friday contributes both DDoS and benign traffic.
     friday_ddos_df = friday_df[friday_df["Label"].str.lower() == "ddos"].copy()
     friday_benign_df = friday_df[friday_df["Label"].str.lower() == "benign"].copy()
 
@@ -129,17 +84,15 @@ def load_baseline_dataset() -> pd.DataFrame:
     if friday_ddos_df.empty:
         raise ValueError("No DDoS records found after filtering Friday data.")
 
-    # Normalize label names.
     monday_benign_df["Label"] = "Benign"
     friday_ddos_df["Label"] = "DDoS"
     friday_benign_df["Label"] = "Benign"
 
     combined_df = pd.concat([monday_benign_df, friday_benign_df, friday_ddos_df], ignore_index=True)
 
-    print("Class counts before deduplication:")
+    print("\nClass counts before deduplication:")
     print(combined_df["Label"].value_counts())
 
-    # Remove duplicate rows before the train/test split.
     rows_before_dedup = len(combined_df)
     combined_df = combined_df.drop_duplicates(ignore_index=True)
     rows_after_dedup = len(combined_df)
@@ -147,7 +100,7 @@ def load_baseline_dataset() -> pd.DataFrame:
         f"Removed duplicates: {rows_before_dedup - rows_after_dedup} ({(rows_before_dedup - rows_after_dedup) / rows_before_dedup * 100:.2f}%)"
     )
 
-    print("Class counts after deduplication:")
+    print("\nClass counts after deduplication:")
     print(combined_df["Label"].value_counts())
 
     combined_df.to_csv(PROCESSED_DIR / "baseline_ddos_dataset.csv", index=False)
@@ -162,35 +115,54 @@ def main() -> None:
             f"Missing {RAW_DIR} directory. Create it and place the raw CSV files there."
         )
 
-    CLEANED_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    csv_files = sorted(RAW_DIR.glob("*.csv"))
+    cic_dir = RAW_DIR / "CIC_IDS2017"
+    if not cic_dir.exists():
+        raise FileNotFoundError(
+            f"Dataset directory not found: {cic_dir}. "
+            "Ensure CIC-IDS-2017 files are in the correct subdirectory."
+        )
 
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {RAW_DIR}.")
+    all_found_files = list(cic_dir.glob("*.csv"))
+
+    monday_file = next((p for p in all_found_files if "monday-workinghours" in p.name.lower()), None)
+    friday_file = next(
+        (p for p in all_found_files if "friday-workinghours-afternoon-ddos" in p.name.lower()), None
+    )
+
+    if not monday_file or not friday_file:
+        missing = []
+        if not monday_file:
+            missing.append("Monday-WorkingHours*.csv")
+        if not friday_file:
+            missing.append("Friday-WorkingHours-Afternoon-DDos*.csv")
+        raise FileNotFoundError(f"Could not find all required files in {cic_dir}. Missing: {missing}")
+
+    print(f"Processing required files for controlled variant: {[monday_file.name, friday_file.name]}")
+
+    print(f"\nProcessing: {monday_file.name}")
+    monday_raw_df = pd.read_csv(monday_file, low_memory=False, encoding="latin1")
+    monday_df_clean, monday_stats = clean_dataframe(monday_raw_df)
+    print(f"Rows before: {monday_stats['rows_before']}, Rows after: {monday_stats['rows_after']}")
+
+    print(f"\nProcessing: {friday_file.name}")
+    friday_raw_df = pd.read_csv(friday_file, low_memory=False, encoding="latin1")
+    friday_df_clean, friday_stats = clean_dataframe(friday_raw_df)
+    print(f"Rows before: {friday_stats['rows_before']}, Rows after: {friday_stats['rows_after']}")
 
     reports = []
-
-    for csv_path in csv_files:
-        result = preprocess_file(csv_path)
-        reports.append(result)
+    reports.append({"file": monday_file.name, **monday_stats})
+    reports.append({"file": friday_file.name, **friday_stats})
 
     report_df = pd.DataFrame(reports)
-    report_path = CLEANED_DIR / "cleaning_report.csv"
+    report_path = PROCESSED_DIR / "cleaning_report.csv"
     report_df.to_csv(report_path, index=False)
 
-    # Safety check: stop if missing or infinite values remain after cleaning.
-    total_missing_after = int(report_df["missing_after"].sum())
-    total_infinite_after = int(report_df["infinite_after"].sum())
+    print(f"\nCleaning report saved to: {report_path}")
 
-    assert total_missing_after == 0, "Missing values remain after cleaning."
-    assert total_infinite_after == 0, "Infinite values remain after cleaning."
-
-    print(f"Cleaning report saved to: {report_path}")
-
-    print("Creating controlled dataset: Monday Benign + Friday Benign + Friday DDoS")
-    combined_df = load_baseline_dataset()
+    print("\nCreating controlled dataset: Monday Benign + Friday Benign + Friday DDoS")
+    combined_df = load_baseline_dataset(monday_df_clean, friday_df_clean)
     print(f"Controlled dataset shape: {combined_df.shape}")
 
     print("Encoding labels: Benign -> 0, Attack/DDoS -> 1")
@@ -201,7 +173,6 @@ def main() -> None:
 
     X = combined_df.drop(columns=["Label"])
 
-    # Safety check: Random Forest and StandardScaler expect numeric features.
     non_numeric_columns = X.select_dtypes(exclude=[np.number]).columns.tolist()
     if non_numeric_columns:
         raise ValueError(
@@ -255,7 +226,7 @@ def main() -> None:
     print("\nClass distribution in test:")
     print(test_df["Label"].value_counts())
 
-    print("\nPreprocessing finished successfully.")
+    print("\nPreprocessing finished.")
 
 
 if __name__ == "__main__":
