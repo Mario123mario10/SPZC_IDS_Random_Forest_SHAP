@@ -1,15 +1,23 @@
 # data_raw
 
-Place the raw, unmodified CICIDS2017 and other dataset CSV files in this directory.
+This directory stores raw CSV datasets used by the project. Raw CSV files are
+not committed to git because they are large.
 
-The full dataset files are not committed to the repository because they are too large.
+Expected layout:
 
-Expected example files:
+```text
+data_raw/
+  CIC_IDS2017/
+    README.md
+    *.pcap_ISCX.csv
+  CSE_CIC_IDS2018/
+    README.md
+    *.csv
+```
 
-This is not an exhaustive list, but it includes files used by the main processing scripts. The scripts can be configured to use any file, but these are some of the files used in the predefined pipelines.
+The final binary IDS pipeline uses:
 
-- `Monday-WorkingHours.pcap_ISCX.csv` (Used for Benign traffic)
-- `Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv` (Used for DDoS attacks in the `paper_baseline` variant)
-- `Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv` (Used for PortScan attacks)
-- `Tuesday-WorkingHours.pcap_ISCX.csv` (Contains FTP-Patator and SSH-Patator Brute Force attacks)
-- `Brute Force -XSS.csv` (Can be used for Brute Force XSS attacks)
+- `data_raw/CIC_IDS2017/` for training and internal testing.
+- `data_raw/CSE_CIC_IDS2018/` only for external validation.
+
+See the README file inside each subdirectory for the exact expected filenames.
