@@ -10,10 +10,17 @@ __pycache__/
 .pytest_cache/
 
 # Dane i modele
-data_raw/
+data_raw/*
 !data_raw/README.md
+!data_raw/CIC_IDS2017/
+data_raw/CIC_IDS2017/*
+!data_raw/CIC_IDS2017/README.md
+!data_raw/CSE_CIC_IDS2018/
+data_raw/CSE_CIC_IDS2018/*
+!data_raw/CSE_CIC_IDS2018/README.md
 data_processed/
 models/
+reports/
 
 # Pliki systemowe i IDE
 .DS_Store

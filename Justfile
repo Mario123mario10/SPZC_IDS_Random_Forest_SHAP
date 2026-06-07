@@ -1,95 +1,105 @@
-# List available commands
-@default:
-	just -l
+#!/usr/bin/env just --justfile
+
+# Default task to run if no other is specified.
+default:
+	@just -l
 
 # Check if uv is installed
 check-uv:
 	@command -v uv >/dev/null 2>&1 || (echo "uv is missing. Install uv and run the command again." && exit 1)
 
-# Check if Python is available through uv
-check-python: check-uv
-	@uv run python --version
-
-# Check Python code with Ruff
-lint: check-uv
-	uv run ruff check scripts
-
-# Auto-fix safe Ruff issues
-lint-fix: check-uv
-	uv run ruff check --fix scripts
-
-# Format Python code with Ruff
-format: check-uv
-	uv run ruff format scripts
-
-# Check formatting without changing files
-format-check: check-uv
-	uv run ruff format --check scripts
-
-# Run all static checks
-check: lint format-check
-
 # Check if raw data exists
-check-data:
+check-data: check-uv
 	@test -d data_raw || (echo "Missing data_raw/ directory." && exit 1)
 	@find data_raw -name "*.csv" | grep -q . || (echo "No CSV files found in data_raw/." && exit 1)
 
-# Generic check-data for rules that might use either or both, or just to ensure data_raw exists
-check-data: check-uv
-	@test -d data_raw || (echo "Missing data_raw/ directory." && exit 1)
-
 # Install dependencies
-install: check-uv check-python
+install: check-uv
 	uv sync
 
-# Preprocess CICIDS2017 data in the paper-like variant
-preprocess-paper: check-uv check-data
-	uv run python scripts/preprocess_data_paper_baseline.py
+# --- Linting and Formatting ---
+lint: check-uv
+	uv run ruff check scripts
 
-# Train Random Forest in the paper-like variant
-train-paper: check-uv
+format: check-uv
+	uv run ruff format scripts
+
+check: lint
+	uv run ruff format --check scripts
+
+
+# Run the paper baseline variant.
+paper: check-data
+	uv run python scripts/preprocess_data_paper_baseline.py
 	uv run python scripts/train_random_forest_paper_baseline.py
 
-# Preprocess CICIDS2017 data in the controlled variant
-preprocess-controlled: check-uv check-data
+# Run the controlled variant with deduplication.
+controlled: check-data
 	uv run python scripts/preprocess_data_controlled.py
-
-# Train Random Forest in the controlled variant
-train-controlled: check-uv
 	uv run python scripts/train_random_forest_controlled.py
 
-# Backward-compatible alias for the paper-like preprocessing
-preprocess: preprocess-paper
-
-# Run paper-like baseline pipeline
-paper: preprocess-paper train-paper
-
-# Run controlled pipeline
-controlled: preprocess-controlled train-controlled
-
-# Preprocess data for Brute Force detection (can be dataset-agnostic or specific)
-preprocess-bruteforce: check-uv check-data
+# Run Brute Force detection pipeline
+bruteforce: check-data
 	uv run python scripts/preprocess_data_bruteforce.py
-
-# Train Random Forest for Brute Force detection
-train-bruteforce: check-uv
 	uv run python scripts/train_random_forest_bruteforce.py
 
-# Preprocess data for Port Scan detection (can be dataset-agnostic or specific)
-preprocess-portscan: check-uv check-data
+# Run Port Scan detection pipeline
+portscan: check-data
 	uv run python scripts/preprocess_data_portscan.py
-
-# Train Random Forest for Port Scan detection
-train-portscan: check-uv
 	uv run python scripts/train_random_forest_portscan.py
 
-# Run default pipeline
-# The 'all' rule should probably run all available pipelines, or a sensible default set.
-# For now, let's make it run the paper-like baselines for both datasets and brute force.
-all: paper bruteforce portscan
+# Run Web Attacks pipeline
+web_attacks: check-data
+	uv run python scripts/preprocess_data_web_attacks.py
+	uv run python scripts/train_random_forest_web_attacks.py
 
-# Run Brute Force detection pipeline
-bruteforce: preprocess-bruteforce train-bruteforce
+# Prepare the final CICIDS2017 binary dataset.
+preprocess-cicids2017: check-data
+	uv run python scripts/01_preprocess_cicids2017_binary.py
 
-# Run Port Scan detection pipeline
-portscan: preprocess-portscan train-portscan
+# Train the final Random Forest binary IDS model.
+train-binary: check-data
+	uv run python scripts/02_train_random_forest_binary.py
+
+# Prepare CSE-CIC-IDS2018 as an external-only test set.
+preprocess-cse2018: check-data
+	uv run python scripts/03_preprocess_cse_cic_ids2018_external.py
+
+# Evaluate the final model on internal and external test sets.
+evaluate-binary: check-data
+	uv run python scripts/04_evaluate_binary_model.py
+
+# Fast smoke-test evaluation on a limited number of rows per dataset.
+evaluate-binary-quick: check-data
+	uv run python scripts/04_evaluate_binary_model.py --max-rows 200000 --skip-predictions --name-suffix _quick
+
+# Run SHAP analysis for the final binary model.
+shap-binary: check-data
+	uv run python scripts/05_analyze_shap_binary.py
+
+# Fast smoke-test SHAP analysis on a small sample.
+shap-binary-quick: check-data
+	uv run python scripts/05_analyze_shap_binary.py --max-rows 200000 --samples-per-family 300 --name-suffix _quick
+
+# Run the final model pipeline without SHAP.
+main: preprocess-cicids2017 train-binary preprocess-cse2018 evaluate-binary
+
+# Run the final model pipeline including SHAP.
+main-with-shap: main shap-binary
+
+# Run the final model pipeline with quick evaluation and quick SHAP.
+main-quick: preprocess-cicids2017 train-binary preprocess-cse2018 evaluate-binary-quick shap-binary-quick
+
+# Backward-compatible aliases for the final model pipeline.
+full_dataset: main
+generalization: main
+
+# Run legacy exploratory variants.
+legacy-all: bruteforce web_attacks portscan paper controlled
+
+# Run the default final pipeline.
+all: main
+
+# Summarize results from all variants
+summarize-results: check-data
+	uv run python scripts/summarize_variant_results.py
