@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -12,14 +13,9 @@ from tqdm import tqdm
 from variant_paths import get_variant_paths
 
 RAW_DIR = Path("data_raw")
-VARIANT = "full_dataset"
-PATHS = get_variant_paths(VARIANT)
-PROCESSED_DIR = PATHS.processed_dir
-CLEANED_DATA_DIR = PATHS.cleaned_data_dir
 
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
-MAX_SAMPLES_PER_CLASS = 50000
 
 
 def count_infinite_values(df: pd.DataFrame) -> pd.Series:
@@ -60,9 +56,7 @@ def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     return df_clean, stats
 
 
-def load_and_process_full_dataset(
-    dataframes: list[pd.DataFrame], processed_dir: Path
-) -> pd.DataFrame:
+def process_and_combine_data(dataframes: list[pd.DataFrame], processed_dir: Path) -> pd.DataFrame:
     if not dataframes:
         raise ValueError("No dataframes provided to process.")
 
@@ -85,56 +79,98 @@ def load_and_process_full_dataset(
     all_df_common = [df[common_cols] for df in dataframes]
     combined_df = pd.concat(all_df_common, ignore_index=True)
 
-    combined_df["label"] = combined_df["label"].str.strip()
+    combined_df["original_label"] = combined_df["label"].str.strip()
 
-    if "original_label" not in combined_df.columns:
-        combined_df["original_label"] = combined_df["label"]
+    bruteforce_labels = [
+        "ftp-patator",
+        "ssh-patator",
+        "ftp-bruteforce",
+        "ssh-bruteforce",
+    ]
 
-    print(f"Rows before deduplication: {len(combined_df)}")
-    combined_df = combined_df.drop_duplicates(ignore_index=True)
-    print(f"Rows after deduplication: {len(combined_df)}")
+    def map_label(label):
+        if str(label).strip().lower() in bruteforce_labels:
+            return "BruteForce"
+        elif str(label).strip().lower() == "benign":
+            return "Benign"
+        else:
+            return "Other"
 
-    print("\nClass counts before sampling:")
+    combined_df["label"] = combined_df["label"].apply(map_label)
+
+    combined_df = combined_df[combined_df["label"].isin(["Benign", "BruteForce"])].copy()
+
+    print("\nClass counts in the BruteForce dataset:")
     print(combined_df["label"].value_counts())
 
-    print(f"\nSampling each class to a maximum of {MAX_SAMPLES_PER_CLASS} records...")
-
-    sampled_df = (
-        combined_df.groupby("label")
-        .apply(
-            lambda x: x.sample(
-                n=min(len(x), MAX_SAMPLES_PER_CLASS), random_state=RANDOM_STATE
-            )
+    if combined_df["label"].nunique() < 2:
+        raise ValueError(
+            "Only one class found after labeling. For binary classification, "
+            "please provide files containing both 'Benign' traffic and 'BruteForce' attack traffic."
         )
-        .reset_index(drop=True)
-    )
-
-    print("\nClass counts after sampling:")
-    print(sampled_df["label"].value_counts())
 
     processed_dir.mkdir(parents=True, exist_ok=True)
-    sampled_df.to_csv(processed_dir / "full_dataset_sampled.csv", index=False)
-    sampled_df["label"].value_counts().to_csv(
-        processed_dir / "full_dataset_class_distribution.csv"
-    )
+    combined_df.to_csv(processed_dir / "bruteforce_dataset.csv", index=False)
+    combined_df["label"].value_counts().to_csv(processed_dir / "bruteforce_class_distribution.csv")
 
-    return sampled_df
+    return combined_df
 
 
 def main() -> None:
-    if not RAW_DIR.exists():
-        raise FileNotFoundError(
-            f"Missing {RAW_DIR} directory. Create it and place the raw CSV files there."
+    parser = argparse.ArgumentParser(description="Preprocess data for BruteForce detection.")
+
+    default_files = [
+        "data_raw/Friday-WorkingHours-Afternoon-Patator.pcap_ISCX.csv",
+        "data_raw/02-14-2018.csv",
+        "data_raw/02-20-2018.csv",
+        "data_raw/Monday-WorkingHours.pcap_ISCX.csv",
+    ]
+
+    existing_default_files = [f for f in default_files if Path(f).exists()]
+    if not existing_default_files:
+        print(
+            "Warning: No default data files found. Please specify files using the --files argument."
         )
 
-    csv_files = sorted(RAW_DIR.glob("**/*.csv"))
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=existing_default_files,
+        help="Paths to raw CSV files to process. Should include attack and benign traffic.",
+    )
+    args = parser.parse_args()
+
+    variant = "bruteforce"
+    PATHS = get_variant_paths(variant)
+    PROCESSED_DIR = PATHS.processed_dir
+    csv_files = [Path(f) for f in args.files]
+
+    attack_default_files = {
+        "data_raw/Friday-WorkingHours-Afternoon-Patator.pcap_ISCX.csv",
+        "data_raw/02-14-2018.csv",
+        "data_raw/02-20-2018.csv",
+    }
+    used_files_str = {str(f) for f in csv_files}
+    has_attack_file = any(f in used_files_str for f in attack_default_files)
+
+    if not csv_files or not has_attack_file:
+        missing_files = attack_default_files - used_files_str
+        raise FileNotFoundError(
+            "Could not find the required BruteForce attack files in your 'data_raw/' directory.\n"
+            "The script expects at least one of the following attack files to be present:\n"
+            + "\n".join(f"- {f}" for f in sorted(attack_default_files))
+            + "\n\nBased on your current files, these seem to be missing:\n"
+            + "\n".join(f"- {f}" for f in sorted(missing_files))
+        )
+
+    processing_source_str = f"specific files: {[str(f) for f in csv_files]}"
 
     if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {RAW_DIR}.")
+        raise FileNotFoundError("No CSV files found for processing.")
 
     cleaned_dfs = []
     reports = []
-    print(f"Loading and cleaning raw CSV files from {RAW_DIR}...")
+    print(f"Loading and cleaning raw CSV files from {processing_source_str}...")
     for csv_path in tqdm(csv_files, desc="Cleaning files"):
         try:
             df = pd.read_csv(csv_path, low_memory=False, encoding="latin1")
@@ -149,12 +185,12 @@ def main() -> None:
     report_df.to_csv(report_path, index=False)
     print(f"Cleaning report saved to: {report_path}")
 
-    print("\nCombining, sampling, and processing data for full_dataset...")
-    combined_df = load_and_process_full_dataset(cleaned_dfs, PROCESSED_DIR)
-    print(f"Full dataset shape after sampling: {combined_df.shape}")
+    print(f"Combining and labeling data for {variant}...")
+    combined_df = process_and_combine_data(cleaned_dfs, PROCESSED_DIR)
+    print(f"{variant} dataset shape: {combined_df.shape}")
 
-    print("\nEncoding labels: Benign -> 0, Attack -> 1")
-    y = combined_df["label"].apply(lambda label: 0 if str(label).strip().lower() == "benign" else 1)
+    print("Encoding labels: Benign -> 0, Attack -> 1")
+    y = combined_df["label"].apply(lambda label: 0 if label.lower() == "benign" else 1)
     original_labels = combined_df["original_label"]
     X = combined_df.drop(columns=["label", "original_label"])
 
@@ -163,20 +199,19 @@ def main() -> None:
         print(f"Dropping non-numeric identifier columns: {non_numeric_columns}")
         X = X.drop(columns=non_numeric_columns)
 
-    print("\nSplitting into train and test sets")
-    (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        _,
-        y_test_original,
-    ) = train_test_split(X, y, original_labels, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y)
+    print("Splitting into train and test sets")
+    X_train, X_test, y_train, y_test, _, y_test_original = train_test_split(
+        X, y, original_labels, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+    )
 
     print("Scaling features with StandardScaler")
     scaler = StandardScaler()
-    X_train_scaled = pd.DataFrame(scaler.fit_transform(X_train), columns=X_train.columns, index=X_train.index)
-    X_test_scaled = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns, index=X_test.index)
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train), columns=X_train.columns, index=X_train.index
+    )
+    X_test_scaled = pd.DataFrame(
+        scaler.transform(X_test), columns=X_test.columns, index=X_test.index
+    )
 
     joblib.dump(scaler, PROCESSED_DIR / "standard_scaler.joblib")
 

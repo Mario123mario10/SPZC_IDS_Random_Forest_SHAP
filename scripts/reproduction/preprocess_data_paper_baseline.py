@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from pathlib import Path
 
 import numpy as np
@@ -9,11 +10,11 @@ from sklearn.model_selection import train_test_split
 import joblib
 from sklearn.preprocessing import StandardScaler
 
-from variant_paths import BASE_PROCESSED_DIR, get_variant_paths
+from variant_paths import get_variant_paths
 
 
 RAW_DIR = Path("data_raw")
-VARIANT = "controlled"
+VARIANT = "paper_baseline"
 PATHS = get_variant_paths(VARIANT)
 PROCESSED_DIR = PATHS.processed_dir
 
@@ -76,7 +77,6 @@ def load_baseline_dataset(monday_df: pd.DataFrame, friday_df: pd.DataFrame) -> p
     monday_benign_df = monday_df[monday_df["Label"].str.lower() == "benign"].copy()
 
     friday_ddos_df = friday_df[friday_df["Label"].str.lower() == "ddos"].copy()
-    friday_benign_df = friday_df[friday_df["Label"].str.lower() == "benign"].copy()
 
     if monday_benign_df.empty:
         raise ValueError("No Benign records found after filtering Monday data.")
@@ -86,21 +86,10 @@ def load_baseline_dataset(monday_df: pd.DataFrame, friday_df: pd.DataFrame) -> p
 
     monday_benign_df["Label"] = "Benign"
     friday_ddos_df["Label"] = "DDoS"
-    friday_benign_df["Label"] = "Benign"
 
-    combined_df = pd.concat([monday_benign_df, friday_benign_df, friday_ddos_df], ignore_index=True)
+    combined_df = pd.concat([monday_benign_df, friday_ddos_df], ignore_index=True)
 
-    print("\nClass counts before deduplication:")
-    print(combined_df["Label"].value_counts())
-
-    rows_before_dedup = len(combined_df)
-    combined_df = combined_df.drop_duplicates(ignore_index=True)
-    rows_after_dedup = len(combined_df)
-    print(
-        f"Removed duplicates: {rows_before_dedup - rows_after_dedup} ({(rows_before_dedup - rows_after_dedup) / rows_before_dedup * 100:.2f}%)"
-    )
-
-    print("\nClass counts after deduplication:")
+    print("\nClass counts in the baseline dataset:")
     print(combined_df["Label"].value_counts())
 
     combined_df.to_csv(PROCESSED_DIR / "baseline_ddos_dataset.csv", index=False)
@@ -126,7 +115,9 @@ def main() -> None:
 
     all_found_files = list(cic_dir.glob("*.csv"))
 
-    monday_file = next((p for p in all_found_files if "monday-workinghours" in p.name.lower()), None)
+    monday_file = next(
+        (p for p in all_found_files if "monday-workinghours" in p.name.lower()), None
+    )
     friday_file = next(
         (p for p in all_found_files if "friday-workinghours-afternoon-ddos" in p.name.lower()), None
     )
@@ -137,9 +128,12 @@ def main() -> None:
             missing.append("Monday-WorkingHours*.csv")
         if not friday_file:
             missing.append("Friday-WorkingHours-Afternoon-DDos*.csv")
-        raise FileNotFoundError(f"Could not find all required files in {cic_dir}. Missing: {missing}")
+        raise FileNotFoundError(
+            f"Could not find all required files in {cic_dir}. Missing: {missing}"
+        )
 
-    print(f"Processing required files for controlled variant: {[monday_file.name, friday_file.name]}")
+    csv_files_to_process = [monday_file, friday_file]
+    print(f"Processing required files for paper baseline: {[p.name for p in csv_files_to_process]}")
 
     print(f"\nProcessing: {monday_file.name}")
     monday_raw_df = pd.read_csv(monday_file, low_memory=False, encoding="latin1")
@@ -161,9 +155,9 @@ def main() -> None:
 
     print(f"\nCleaning report saved to: {report_path}")
 
-    print("\nCreating controlled dataset: Monday Benign + Friday Benign + Friday DDoS")
+    print("\nCreating baseline dataset: Monday Benign + Friday DDoS")
     combined_df = load_baseline_dataset(monday_df_clean, friday_df_clean)
-    print(f"Controlled dataset shape: {combined_df.shape}")
+    print(f"Baseline dataset shape: {combined_df.shape}")
 
     print("Encoding labels: Benign -> 0, Attack/DDoS -> 1")
 
@@ -180,7 +174,7 @@ def main() -> None:
             f"{non_numeric_columns}. Remove or encode them before scaling."
         )
 
-    print("Splitting into train and test sets...")
+    print("Splitting into train and test sets")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -190,7 +184,7 @@ def main() -> None:
         stratify=y,
     )
 
-    print("Scaling features with StandardScaler...")
+    print("Scaling features with StandardScaler")
 
     scaler = StandardScaler()
 

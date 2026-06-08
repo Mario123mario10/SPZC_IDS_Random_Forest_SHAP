@@ -67,11 +67,20 @@ project/
 |-- data_processed/
 |-- models/
 |-- scripts/
+|   |-- main/
+|   |-- reproduction/
+|   `-- legacy/
 |-- pyproject.toml
 |-- uv.lock
 |-- Justfile
 `-- README.md
 ```
+
+Script groups:
+
+- `scripts/main/` - final binary IDS pipeline used for the main experiment.
+- `scripts/reproduction/` - paper-like baseline and controlled variant.
+- `scripts/legacy/` - older attack-specific and diagnostic experiments kept for reference.
 
 ## Installation
 
@@ -121,13 +130,26 @@ Run the final binary IDS pipeline with SHAP:
 just main-with-shap
 ```
 
+Analyze precision/recall trade-offs for different decision thresholds after
+`evaluate-binary` has generated prediction files:
+
+```bash
+just threshold-sweep
+```
+
+Run a feature-ablation variant that removes `dst_port` and `fwd_header_len`:
+
+```bash
+just ablation-no-port-header
+```
+
 The final pipeline executes:
 
-1. `scripts/01_preprocess_cicids2017_binary.py`
-2. `scripts/02_train_random_forest_binary.py`
-3. `scripts/03_preprocess_cse_cic_ids2018_external.py`
-4. `scripts/04_evaluate_binary_model.py`
-5. `scripts/05_analyze_shap_binary.py` only in `main-with-shap`
+1. `scripts/main/01_preprocess_cicids2017_binary.py`
+2. `scripts/main/02_train_random_forest_binary.py`
+3. `scripts/main/03_preprocess_cse_cic_ids2018_external.py`
+4. `scripts/main/04_evaluate_binary_model.py`
+5. `scripts/main/05_analyze_shap_binary.py` only in `main-with-shap`
 
 The model is trained only on CICIDS2017. CSE-CIC-IDS2018 is transformed with
 the CICIDS2017 scaler and used only for external validation.
@@ -162,11 +184,51 @@ just legacy-all
 | :----------------- | -------: | --------: | -----: | --------: | -----------: |
 | paper\_baseline    |   0.9999 |    1.0000 | 0.9995 |    0.9997 |      131 502 |
 | controlled         |   0.9999 |    0.9999 | 0.9996 |    0.9997 |      145 135 |
-| main\_internal\_2017 | 0.9989 |    0.9963 | 0.9993 |    0.9978 |      107 516 |
-| main\_external\_2018 | 0.7235 |    0.9696 | 0.0325 |    0.0629 |    8 057 736 |
+| main\_internal\_2017 | 0.9990 |    0.9970 | 0.9991 |    0.9981 |      107 516 |
+| main\_external\_2018 | 0.7249 |    0.9755 | 0.0372 |    0.0717 |    8 057 736 |
 
 Using a set of CICIDS2017 data, the paper's baseline and controlled variants score almost 100%.
 The main binary model works good inside (2017 test split), however it works bad on the external CSE-CIC-IDS2018 set. Its high precision and near-zero recall show that almost all 2018 traffic is classified as benign, indicating a significant distribution shift between the two datasets.
+
+### External Threshold Sweep
+
+The default binary decision threshold is `0.50`. Lowering the threshold on
+existing prediction probabilities can improve external recall, but it also
+increases false positives.
+
+| threshold | precision | recall | f1\_score | specificity | false positives | false negatives |
+| --------: | --------: | -----: | --------: | ----------: | --------------: | --------------: |
+|      0.50 |    0.9755 | 0.0372 |    0.0717 |      0.9996 |           2 147 |       2 214 439 |
+|      0.30 |    0.9732 | 0.1385 |    0.2426 |      0.9985 |           8 776 |       1 981 363 |
+|      0.20 |    0.9736 | 0.4070 |    0.5740 |      0.9956 |          25 421 |       1 363 985 |
+|      0.10 |    0.7894 | 0.6686 |    0.7240 |      0.9287 |         410 300 |         762 261 |
+|      0.05 |    0.6791 | 0.7876 |    0.7293 |      0.8513 |         856 055 |         488 467 |
+|      0.01 |    0.4639 | 0.9914 |    0.6320 |      0.5422 |       2 635 635 |          19 777 |
+
+For the external CSE-CIC-IDS2018 set, thresholds around `0.10`-`0.05` give a
+much better recall/F1 trade-off than the default `0.50`, but they also produce
+many more false alarms. This suggests that the model is not useless on the
+external set, but its default threshold is too conservative under dataset shift.
+
+### Feature Ablation: No `dst_port`, No `fwd_header_len`
+
+Because SHAP showed high reliance on `dst_port` and `fwd_header_len`, an
+additional ablation variant was trained without these two features. The goal was
+to check whether removing potentially dataset-specific shortcuts improves
+external generalization.
+
+| model / threshold | precision | recall | f1\_score | specificity | false positives | false negatives |
+| :---------------- | --------: | -----: | --------: | ----------: | --------------: | --------------: |
+| original, 0.50    |    0.9755 | 0.0372 |    0.0717 |      0.9996 |           2 147 |       2 214 439 |
+| ablation, 0.50    |    0.9639 | 0.0892 |    0.1633 |      0.9987 |           7 687 |       2 094 903 |
+| original, 0.05    |    0.6791 | 0.7876 |    0.7293 |      0.8513 |         856 055 |         488 467 |
+| ablation, 0.05    |    0.5409 | 0.6058 |    0.5715 |      0.7946 |       1 182 856 |         906 564 |
+
+Removing `dst_port` and `fwd_header_len` improves external recall at the default
+threshold, but the original model with a lower decision threshold still gives a
+better recall/F1 trade-off. This indicates that these two features are not the
+only cause of weak generalization; the main issue is broader distribution shift
+between CICIDS2017 and CSE-CIC-IDS2018.
 
 ---
 

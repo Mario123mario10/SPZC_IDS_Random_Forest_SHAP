@@ -56,9 +56,7 @@ def clean_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     return df_clean, stats
 
 
-def load_and_label_portscan_data(
-    cleaned_files: list[Path], processed_dir: Path
-) -> pd.DataFrame:
+def load_and_label_portscan_data(cleaned_files: list[Path], processed_dir: Path) -> pd.DataFrame:
     all_df = []
     if not cleaned_files:
         raise ValueError("No cleaned files provided to load.")
@@ -140,13 +138,17 @@ def main() -> None:
 
     cleaned_file_paths = []
     reports = []
-    print(f"Cleaning raw CSV files from {processing_source_str} and saving to {CLEANED_DATA_DIR}...")
+    print(
+        f"Cleaning raw CSV files from {processing_source_str} and saving to {CLEANED_DATA_DIR}..."
+    )
     for csv_path in tqdm(csv_files, desc="Cleaning files"):
         output_cleaned_file_path = CLEANED_DATA_DIR / f"{csv_path.stem}_clean.csv"
         df = pd.read_csv(csv_path, low_memory=False)
         df_clean, stats = clean_dataframe(df)
         df_clean.to_csv(output_cleaned_file_path, index=False)
-        reports.append({"file": csv_path.name, "output_file": output_cleaned_file_path.name, **stats})
+        reports.append(
+            {"file": csv_path.name, "output_file": output_cleaned_file_path.name, **stats}
+        )
         cleaned_file_paths.append(output_cleaned_file_path)
 
     report_df = pd.DataFrame(reports)
@@ -173,8 +175,12 @@ def main() -> None:
 
     print("Scaling features with StandardScaler")
     scaler = StandardScaler()
-    X_train_scaled = pd.DataFrame(scaler.fit_transform(X_train), columns=X_train.columns, index=X_train.index)
-    X_test_scaled = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns, index=X_test.index)
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train), columns=X_train.columns, index=X_train.index
+    )
+    X_test_scaled = pd.DataFrame(
+        scaler.transform(X_test), columns=X_test.columns, index=X_test.index
+    )
 
     joblib.dump(scaler, PROCESSED_DIR / "standard_scaler.joblib")
 

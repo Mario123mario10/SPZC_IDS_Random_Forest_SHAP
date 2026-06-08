@@ -28,10 +28,14 @@ RANDOM_STATE = 42
 
 def load_train_test_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     if not TRAIN_FILE.exists():
-        raise FileNotFoundError(f"File not found: {TRAIN_FILE}. Run preprocess_data_portscan.py first.")
+        raise FileNotFoundError(
+            f"File not found: {TRAIN_FILE}. Run preprocess_data_portscan.py first."
+        )
 
     if not TEST_FILE.exists():
-        raise FileNotFoundError(f"File not found: {TEST_FILE}. Run preprocess_data_portscan.py first.")
+        raise FileNotFoundError(
+            f"File not found: {TEST_FILE}. Run preprocess_data_portscan.py first."
+        )
 
     train_df = pd.read_csv(TRAIN_FILE)
     test_df = pd.read_csv(TEST_FILE)
@@ -99,10 +103,14 @@ def main() -> None:
         )
     )
 
-    metrics_df = pd.DataFrame([{"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}])
+    metrics_df = pd.DataFrame(
+        [{"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}]
+    )
     metrics_df.to_csv(PROCESSED_DIR / "random_forest_metrics.csv", index=False)
 
-    cm_df = pd.DataFrame(cm, index=["true_benign", "true_attack"], columns=["pred_benign", "pred_attack"])
+    cm_df = pd.DataFrame(
+        cm, index=["true_benign", "true_attack"], columns=["pred_benign", "pred_attack"]
+    )
     cm_df.to_csv(PROCESSED_DIR / "random_forest_confusion_matrix.csv")
 
     model_path = PATHS.random_forest_model_file

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 
 import joblib
 import matplotlib
@@ -28,7 +29,12 @@ from binary_pipeline_common import (
 CHUNK_SIZE = 200_000
 DEFAULT_SAMPLES_PER_FAMILY = 2_000
 MAX_DISPLAY = 30
+LOCAL_MAX_DISPLAY = 15
 RANDOM_STATE = 42
+
+
+def make_filename_slug(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_")
 
 
 def get_attack_shap_values(shap_values):
@@ -37,6 +43,16 @@ def get_attack_shap_values(shap_values):
     if len(shap_values.shape) == 3:
         return shap_values[:, :, 1]
     return shap_values
+
+
+def get_attack_expected_value(explainer) -> float:
+    expected_value = explainer.expected_value
+    if isinstance(expected_value, list):
+        return float(expected_value[1])
+    expected_array = np.asarray(expected_value)
+    if expected_array.ndim > 0 and len(expected_array) > 1:
+        return float(expected_array[1])
+    return float(expected_array)
 
 
 def update_family_samples(
@@ -111,6 +127,103 @@ def build_shap_sample(
     return X_sample, y_sample, metadata_sample
 
 
+def save_dependence_plots(
+    dataset_name: str,
+    X_sample: pd.DataFrame,
+    shap_attack: np.ndarray,
+    importance_df: pd.DataFrame,
+    *,
+    top_n: int = 2,
+) -> None:
+    for feature in importance_df["feature"].head(top_n):
+        feature_position = X_sample.columns.get_loc(feature)
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.scatter(
+            X_sample[feature],
+            shap_attack[:, feature_position],
+            s=16,
+            alpha=0.65,
+            edgecolors="none",
+        )
+        ax.axhline(0.0, color="black", linewidth=0.8, alpha=0.5)
+        ax.set_xlabel(feature)
+        ax.set_ylabel(f"SHAP value for {feature}")
+        ax.set_title(f"{dataset_name}: SHAP dependence for {feature}")
+        fig.tight_layout()
+        fig.savefig(
+            REPORTS_FIGURE_DIR
+            / f"{dataset_name}_shap_dependence_{make_filename_slug(feature)}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
+
+def save_local_waterfall_plots(
+    model,
+    explainer,
+    dataset_name: str,
+    X_sample: pd.DataFrame,
+    y_sample: pd.Series,
+    metadata_sample: pd.DataFrame,
+    shap_attack: np.ndarray,
+) -> None:
+    probabilities = model.predict_proba(X_sample)[:, 1]
+    attack_positions = np.flatnonzero(y_sample.to_numpy(dtype=int) == 1)
+    benign_positions = np.flatnonzero(y_sample.to_numpy(dtype=int) == 0)
+
+    selected_rows = []
+    examples = {
+        "attack_high_confidence": (
+            attack_positions[np.argmax(probabilities[attack_positions])]
+            if len(attack_positions)
+            else int(np.argmax(probabilities))
+        ),
+        "benign_high_confidence": (
+            benign_positions[np.argmin(probabilities[benign_positions])]
+            if len(benign_positions)
+            else int(np.argmin(probabilities))
+        ),
+    }
+
+    base_value = get_attack_expected_value(explainer)
+    feature_names = list(X_sample.columns)
+
+    for example_name, position in examples.items():
+        explanation = shap.Explanation(
+            values=shap_attack[position],
+            base_values=base_value,
+            data=X_sample.iloc[position].to_numpy(dtype=float),
+            feature_names=feature_names,
+        )
+        plt.figure()
+        shap.plots.waterfall(explanation, max_display=LOCAL_MAX_DISPLAY, show=False)
+        plt.tight_layout()
+        plt.savefig(
+            REPORTS_FIGURE_DIR / f"{dataset_name}_shap_waterfall_{example_name}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+
+        metadata_row = metadata_sample.iloc[position].to_dict()
+        selected_rows.append(
+            {
+                "dataset": dataset_name,
+                "example": example_name,
+                "sample_position": int(position),
+                "y_true": int(y_sample.iloc[position]),
+                "attack_probability": float(probabilities[position]),
+                **metadata_row,
+            }
+        )
+
+    pd.DataFrame(selected_rows).to_csv(
+        REPORTS_TABLE_DIR / f"{dataset_name}_shap_local_examples.csv",
+        index=False,
+    )
+
+
 def save_shap_outputs(
     model,
     dataset_name: str,
@@ -180,6 +293,17 @@ def save_shap_outputs(
     plt.tight_layout()
     plt.savefig(bar_path, dpi=300, bbox_inches="tight")
     plt.close()
+
+    save_dependence_plots(dataset_name, X_sample, shap_attack, importance_df)
+    save_local_waterfall_plots(
+        model,
+        explainer,
+        dataset_name,
+        X_sample,
+        y_sample,
+        metadata_sample,
+        shap_attack,
+    )
 
     print(f"Saved SHAP tables and figures for {dataset_name}.")
 

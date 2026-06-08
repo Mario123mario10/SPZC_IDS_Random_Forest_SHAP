@@ -4,7 +4,14 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
-VALID_VARIANTS = ("paper_baseline", "controlled", "portscan", "bruteforce", "generalization_test", "web_attacks")
+VALID_VARIANTS = (
+    "paper_baseline",
+    "controlled",
+    "portscan",
+    "bruteforce",
+    "generalization_test",
+    "web_attacks",
+)
 
 BASE_PROCESSED_DIR = Path("data_processed")
 BASE_MODEL_DIR = Path("models")
@@ -40,7 +47,7 @@ class VariantPaths:
     @property
     def random_forest_model_file(self) -> Path:
         return self.model_dir / "random_forest.joblib"
-    
+
     @property
     def cleaning_report_file(self) -> Path:
         return self.processed_dir / "cleaning_report.csv"
