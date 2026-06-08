@@ -2,6 +2,10 @@
 
 Place CICIDS2017 CSV files in this directory.
 
+Official source:
+
+<https://cicresearch.ca/CICDataset/CIC-IDS-2017/> (CIC-IDS-2017/CSVs/MachineLearningCSV.zip)
+
 Required files for the final binary pipeline and legacy experiments:
 
 ```text

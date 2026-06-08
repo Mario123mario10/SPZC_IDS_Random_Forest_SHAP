@@ -2,6 +2,10 @@
 
 Place CSE-CIC-IDS2018 CSV files in this directory.
 
+Download source:
+
+<https://data.mendeley.com/datasets/29hdbdzx2r/1>
+
 Required files for external validation:
 
 ```text

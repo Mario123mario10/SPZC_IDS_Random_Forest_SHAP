@@ -1,164 +1,138 @@
 # SPZC IDS Random Forest + SHAP
 
 This project implements and analyzes an intrusion detection system based on
-Random Forest and SHAP. The final pipeline trains one binary model on
-CICIDS2017 (`Benign` vs `Attack`) and evaluates the same model on an external
-CSE-CIC-IDS2018 test set without retraining.
+Random Forest and SHAP interpretability. The starting point was a reconstruction
+of the approach from the paper *Intrusion Detection using Random Forest and SHAP*
+on CICIDS2017. The project then extends the original setup with a more
+controlled variant and a final binary model evaluated on the independent
+CSE-CIC-IDS2018 dataset.
+
+The main pipeline trains a binary `Benign` vs `Attack` model on CICIDS2017 and
+evaluates the same model on CSE-CIC-IDS2018 without retraining.
 
 ## Requirements
 
-The project assumes the following tools:
+The project is intended to run in a Linux/WSL environment.
+
+Required tools:
 
 - Python >= 3.10
-- uv
-- just
+- `uv`
+- `just`
 
-The `uv` and `just` tools should be installed globally and available from the
-terminal.
-
-## Data Layout
-
-The raw datasets are not stored in the repository because of file size. Place
-the CSV files in separate directories:
-```text
-data_raw/
-  CIC_IDS2017/
-  CSE_CIC_IDS2018/
-```
-
-After preprocessing, generated files are written to:
-
-```text
-data_processed/
-models/
-reports/
-```
-
-The final binary pipeline writes:
-
-```text
-data_processed/cicids2017_binary/
-data_processed/cse_cic_ids2018_external/
-models/binary_ids/
-reports/tables/
-reports/figures/
-```
-
-Legacy exploratory variants are still stored separately:
-
-```text
-data_processed/paper_baseline/
-data_processed/controlled/
-data_processed/portscan/
-data_processed/bruteforce/
-data_processed/web_attacks/
-models/paper_baseline/
-models/controlled/
-models/portscan/
-models/bruteforce/
-models/web_attacks/
-```
-
-Directory structure:
-
-```text
-project/
-|-- data_raw/
-|-- data_processed/
-|-- models/
-|-- scripts/
-|   |-- main/
-|   |-- reproduction/
-|   `-- legacy/
-|-- pyproject.toml
-|-- uv.lock
-|-- Justfile
-`-- README.md
-```
-
-Script groups:
-
-- `scripts/main/` - final binary IDS pipeline used for the main experiment.
-- `scripts/reproduction/` - paper-like baseline and controlled variant.
-- `scripts/legacy/` - older attack-specific and diagnostic experiments kept for reference.
-
-## Installation
-
-Recommended dependency installation:
+Install dependencies:
 
 ```bash
 uv sync
 ```
 
-Alternatively, use:
+Alternatively:
 
 ```bash
 just install
 ```
 
-## Running The Pipeline
+## Data
 
-Show available commands:
+Raw datasets are not stored in the repository because of their size. Place the
+CSV files under `data_raw/`:
+
+```text
+data_raw/
+  CIC_IDS2017/
+    Monday-WorkingHours.pcap_ISCX.csv
+    Tuesday-WorkingHours.pcap_ISCX.csv
+    Wednesday-workingHours.pcap_ISCX.csv
+    Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv
+    Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv
+    Friday-WorkingHours-Morning.pcap_ISCX.csv
+    Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv
+    Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv
+
+  CSE_CIC_IDS2018/
+    FTP-BruteForce.csv
+    SSH-Bruteforce.csv
+    Brute Force -Web.csv
+    Brute Force -XSS.csv
+    DoS attacks-GoldenEye.csv
+    DoS attacks-Hulk.csv
+    DoS attacks-SlowHTTPTest.csv
+    DoS attacks-Slowloris.csv
+    DDoS attacks-LOIC-HTTP.csv
+    DDOS attack-HOIC.csv
+    DDOS attack-LOIC-UDP.csv
+```
+
+Download sources:
+
+- CICIDS2017: <https://cicresearch.ca/CICDataset/CIC-IDS-2017/>
+- CSE-CIC-IDS2018: <https://data.mendeley.com/datasets/29hdbdzx2r/1>
+
+Additional `README.md` files in `data_raw/`, `data_raw/CIC_IDS2017/`, and
+`data_raw/CSE_CIC_IDS2018/` describe the expected data layout.
+
+Only placeholder `README.md` files from `data_raw/` are tracked by git. The raw
+CSV files should stay local and are ignored by `.gitignore`.
+
+## Repository Structure
+
+```text
+.
+|-- data_raw/          # raw datasets; not versioned
+|-- data_processed/    # generated datasets after preprocessing
+|-- models/            # saved models, scalers, and metadata
+|-- reports/
+|   |-- figures/       # result plots and SHAP figures
+|   `-- tables/        # metrics, confusion matrices, predictions
+|-- scripts/
+|   |-- main/          # final main-model pipeline
+|   |-- reproduction/  # paper baseline reconstruction and controlled variant
+|   `-- legacy/        # older supporting experiments
+|-- Justfile
+|-- pyproject.toml
+|-- uv.lock
+`-- README.md
+```
+
+## Main Commands
+
+List available tasks:
 
 ```bash
 just
 ```
 
-Run the final binary IDS pipeline without SHAP:
+Run the main pipeline without full SHAP analysis:
 
 ```bash
 just main
 ```
 
-Run a faster smoke test after preprocessing/training:
-
-```bash
-just evaluate-binary-quick
-just shap-binary-quick
-```
-
-Run the full preprocessing/training sequence with quick evaluation and quick
-SHAP:
-
-```bash
-just main-quick
-```
-
-Run the final binary IDS pipeline with SHAP:
+Run the main pipeline with SHAP analysis:
 
 ```bash
 just main-with-shap
 ```
 
-Analyze precision/recall trade-offs for different decision thresholds after
-`evaluate-binary` has generated prediction files:
+Run a faster smoke-test version:
+
+```bash
+just main-quick
+```
+
+Analyze decision thresholds from saved prediction files:
 
 ```bash
 just threshold-sweep
 ```
 
-Run a feature-ablation variant that removes `dst_port` and `fwd_header_len`:
+Run the ablation variant without `dst_port` and `fwd_header_len`:
 
 ```bash
 just ablation-no-port-header
 ```
 
-The final pipeline executes:
-
-1. `scripts/main/01_preprocess_cicids2017_binary.py`
-2. `scripts/main/02_train_random_forest_binary.py`
-3. `scripts/main/03_preprocess_cse_cic_ids2018_external.py`
-4. `scripts/main/04_evaluate_binary_model.py`
-5. `scripts/main/05_analyze_shap_binary.py` only in `main-with-shap`
-
-The model is trained only on CICIDS2017. CSE-CIC-IDS2018 is transformed with
-the CICIDS2017 scaler and used only for external validation.
-
-The external CSE-CIC-IDS2018 test set can contain millions of rows. Use
-`evaluate-binary-quick` or `shap-binary-quick` for fast checks, and
-`evaluate-binary` / `shap-binary` for the full final results.
-
-Run the paper-like baseline:
+Run the paper-like reconstruction:
 
 ```bash
 just paper
@@ -170,147 +144,111 @@ Run the controlled variant:
 just controlled
 ```
 
-Run all legacy exploratory variants:
+## Main Pipeline
 
-```bash
-just legacy-all
-```
+The main model pipeline is implemented in `scripts/main/`:
+
+1. `01_preprocess_cicids2017_binary.py` - prepares the binary CICIDS2017
+   dataset (`Benign` vs `Attack`).
+2. `02_train_random_forest_binary.py` - trains the Random Forest model.
+3. `03_preprocess_cse_cic_ids2018_external.py` - prepares CSE-CIC-IDS2018 as
+   an external test set.
+4. `04_evaluate_binary_model.py` - evaluates the model on internal and
+   external test sets.
+5. `05_analyze_shap_binary.py` - runs SHAP analysis for the main model.
+6. `06_threshold_sweep.py` - analyzes different decision thresholds.
+7. `07_ablation_no_dst_port_no_fwd_header_len.py` - trains and evaluates the
+   variant without `dst_port` and `fwd_header_len`.
+
+The model is trained only on CICIDS2017. CSE-CIC-IDS2018 is used only as an
+external generalization test set.
 
 ## Results
 
 ### Variant Comparison
 
-| variant            | accuracy | precision | recall | f1\_score | test samples |
-| :----------------- | -------: | --------: | -----: | --------: | -----------: |
-| paper\_baseline    |   0.9999 |    1.0000 | 0.9995 |    0.9997 |      131 502 |
-| controlled         |   0.9999 |    0.9999 | 0.9996 |    0.9997 |      145 135 |
-| main\_internal\_2017 | 0.9990 |    0.9970 | 0.9991 |    0.9981 |      107 516 |
-| main\_external\_2018 | 0.7249 |    0.9755 | 0.0372 |    0.0717 |    8 057 736 |
+| variant            | accuracy | precision | recall | f1_score | test samples |
+| :----------------- | -------: | --------: | -----: | -------: | -----------: |
+| Paper Baseline     |   0.9999 |    1.0000 | 0.9995 |   0.9997 |      131 502 |
+| Controlled         |   0.9999 |    0.9999 | 0.9996 |   0.9998 |      145 135 |
+| Main internal 2017 |   0.9990 |    0.9970 | 0.9991 |   0.9981 |      107 516 |
+| Main external 2018 |   0.7249 |    0.9755 | 0.0372 |   0.0717 |    8 057 736 |
 
-Using a set of CICIDS2017 data, the paper's baseline and controlled variants score almost 100%.
-The main binary model works good inside (2017 test split), however it works bad on the external CSE-CIC-IDS2018 set. Its high precision and near-zero recall show that almost all 2018 traffic is classified as benign, indicating a significant distribution shift between the two datasets.
+The `Paper Baseline` and `Controlled` variants achieve almost perfect results
+on CICIDS2017, which suggests that the DDoS vs benign task is very easy for
+Random Forest in this configuration. The main model also performs very well on
+the internal CICIDS2017 split, but generalizes poorly to CSE-CIC-IDS2018. At the
+default decision threshold, the model is very conservative: it keeps high
+precision but detects only a small fraction of attacks.
 
-### External Threshold Sweep
+### Decision Thresholds on CSE-CIC-IDS2018
 
-The default binary decision threshold is `0.50`. Lowering the threshold on
-existing prediction probabilities can improve external recall, but it also
-increases false positives.
+| threshold | precision | recall | f1_score | specificity | false positives | false negatives |
+| --------: | --------: | -----: | -------: | ----------: | --------------: | --------------: |
+|      0.50 |    0.9755 | 0.0372 |   0.0717 |      0.9996 |           2 147 |       2 214 439 |
+|      0.30 |    0.9732 | 0.1385 |   0.2426 |      0.9985 |           8 776 |       1 981 363 |
+|      0.20 |    0.9736 | 0.4070 |   0.5740 |      0.9956 |          25 421 |       1 363 985 |
+|      0.10 |    0.7894 | 0.6686 |   0.7240 |      0.9287 |         410 300 |         762 261 |
+|      0.05 |    0.6791 | 0.7876 |   0.7293 |      0.8513 |         856 055 |         488 467 |
+|      0.01 |    0.4639 | 0.9914 |   0.6320 |      0.5422 |       2 635 635 |          19 777 |
 
-| threshold | precision | recall | f1\_score | specificity | false positives | false negatives |
-| --------: | --------: | -----: | --------: | ----------: | --------------: | --------------: |
-|      0.50 |    0.9755 | 0.0372 |    0.0717 |      0.9996 |           2 147 |       2 214 439 |
-|      0.30 |    0.9732 | 0.1385 |    0.2426 |      0.9985 |           8 776 |       1 981 363 |
-|      0.20 |    0.9736 | 0.4070 |    0.5740 |      0.9956 |          25 421 |       1 363 985 |
-|      0.10 |    0.7894 | 0.6686 |    0.7240 |      0.9287 |         410 300 |         762 261 |
-|      0.05 |    0.6791 | 0.7876 |    0.7293 |      0.8513 |         856 055 |         488 467 |
-|      0.01 |    0.4639 | 0.9914 |    0.6320 |      0.5422 |       2 635 635 |          19 777 |
+Lowering the decision threshold significantly improves external recall, but it
+also increases the number of false alarms. Among the tested values, threshold
+`0.05` gives the best F1-score, while `0.10` is a more conservative compromise.
 
-For the external CSE-CIC-IDS2018 set, thresholds around `0.10`-`0.05` give a
-much better recall/F1 trade-off than the default `0.50`, but they also produce
-many more false alarms. This suggests that the model is not useless on the
-external set, but its default threshold is too conservative under dataset shift.
+### Ablation: No `dst_port`, No `fwd_header_len`
 
-### Feature Ablation: No `dst_port`, No `fwd_header_len`
+| model / threshold | precision | recall | f1_score | specificity | false positives | false negatives |
+| :---------------- | --------: | -----: | -------: | ----------: | --------------: | --------------: |
+| original, 0.50    |    0.9755 | 0.0372 |   0.0717 |      0.9996 |           2 147 |       2 214 439 |
+| ablation, 0.50    |    0.9639 | 0.0892 |   0.1633 |      0.9987 |           7 687 |       2 094 903 |
+| original, 0.05    |    0.6791 | 0.7876 |   0.7293 |      0.8513 |         856 055 |         488 467 |
+| ablation, 0.05    |    0.5409 | 0.6058 |   0.5715 |      0.7946 |       1 182 856 |         906 564 |
 
-Because SHAP showed high reliance on `dst_port` and `fwd_header_len`, an
-additional ablation variant was trained without these two features. The goal was
-to check whether removing potentially dataset-specific shortcuts improves
-external generalization.
+Removing `dst_port` and `fwd_header_len` improves recall at the default `0.50`
+threshold, but it does not outperform the original model with a lower decision
+threshold. This indicates that weak generalization is not caused only by these
+two individual features, but by a broader distribution shift between CICIDS2017
+and CSE-CIC-IDS2018.
 
-| model / threshold | precision | recall | f1\_score | specificity | false positives | false negatives |
-| :---------------- | --------: | -----: | --------: | ----------: | --------------: | --------------: |
-| original, 0.50    |    0.9755 | 0.0372 |    0.0717 |      0.9996 |           2 147 |       2 214 439 |
-| ablation, 0.50    |    0.9639 | 0.0892 |    0.1633 |      0.9987 |           7 687 |       2 094 903 |
-| original, 0.05    |    0.6791 | 0.7876 |    0.7293 |      0.8513 |         856 055 |         488 467 |
-| ablation, 0.05    |    0.5409 | 0.6058 |    0.5715 |      0.7946 |       1 182 856 |         906 564 |
+## Important Output Files
 
-Removing `dst_port` and `fwd_header_len` improves external recall at the default
-threshold, but the original model with a lower decision threshold still gives a
-better recall/F1 trade-off. This indicates that these two features are not the
-only cause of weak generalization; the main issue is broader distribution shift
-between CICIDS2017 and CSE-CIC-IDS2018.
+Main-model results are written to:
 
----
+```text
+reports/tables/
+  internal_2017_metrics.csv
+  external_2018_metrics.csv
+  internal_2017_confusion_matrix.csv
+  external_2018_confusion_matrix.csv
+  external_2018_recall_by_attack_family.csv
+  external_2018_threshold_sweep.csv
+  no_dst_port_no_fwd_header_len_external_2018_metrics.csv
+  no_dst_port_no_fwd_header_len_external_2018_threshold_sweep.csv
 
-### Paper Baseline
-
-Dataset: Monday benign traffic + Friday DDoS traffic (CICIDS2017).
-No deduplication step; class imbalance left as-is (≈ 4:1 benign:attack ratio).
-
-| metric    |   value |
-| :-------- | ------: |
-| Accuracy  |  0.9999 |
-| Precision |  1.0000 |
-| Recall    |  0.9995 |
-| F1-score  |  0.9997 |
-
-Confusion matrix (test set - 131 502 samples):
-
-```
-              Predicted Benign   Predicted Attack
-Actual Benign        105 896                  1
-Actual Attack             13             25 592
+reports/figures/
+  internal_2017_shap_bar_attack.png
+  external_2018_shap_bar_attack.png
+  external_2018_threshold_sweep.png
+  no_dst_port_no_fwd_header_len_external_2018_threshold_sweep.png
 ```
 
-#### Top 10 features by SHAP importance (paper baseline)
+Paper-baseline and controlled-variant outputs are stored in:
 
-| rank | feature                    | mean \|SHAP\| |
-| ---: | :------------------------- | -----------: |
-|    1 | Packet Length Variance     |      0.04503 |
-|    2 | Packet Length Std          |      0.04040 |
-|    3 | Max Packet Length          |      0.03923 |
-|    4 | Bwd Packet Length Max      |      0.02844 |
-|    5 | Average Packet Size        |      0.02663 |
-|    6 | Avg Bwd Segment Size       |      0.02641 |
-|    7 | Total Length of Bwd Packets |     0.02300 |
-|    8 | Fwd Packet Length Max      |      0.02027 |
-|    9 | Subflow Bwd Packets        |      0.01982 |
-|   10 | Destination Port           |      0.01190 |
+```text
+data_processed/paper_baseline/
+data_processed/controlled/
+models/paper_baseline/
+models/controlled/
+```
 
-The importance of features is determined by packet-length data, which is consistent with DDoS behavior generating constant, high-volume packets that are distinct from typical online browsing.
+## Practical Conclusions
 
----
-
-### Controlled Variant
-
-Dataset: Monday benign + Friday benign + Friday DDoS (CICIDS2017).
-Adds Friday benign traffic to reduce the temporal confound present in the paper baseline.
-Deduplication removed 29 518 rows (3.91 %).
-
-| metric    |         mean |          std |
-| :-------- | -----------: | -----------: |
-| Accuracy  |    0.9999170 | 4.87 × 10⁻⁶  |
-| Precision |    0.9999220 | 2.76 × 10⁻⁵  |
-| Recall    |    0.9996090 | 0.00          |
-| F1-score  |    0.9997660 | 1.38 × 10⁻⁵  |
-
-Results are averaged over 5 random seeds (42, 100, 2023, 777, 1337).
-
-No Destination Port experiment (5-seed average):
-
-| metric    |         mean |          std |
-| :-------- | -----------: | -----------: |
-| Accuracy  |    0.9998660 | 1.73 × 10⁻⁵  |
-| Precision |    0.9996480 | 7.81 × 10⁻⁵  |
-| Recall    |    0.9995940 | 2.14 × 10⁻⁵  |
-| F1-score  |    0.9996210 | 4.90 × 10⁻⁵  |
-
-Removing Destination Port causes a negligible drop in F1 (−0.0001), confirming that
-packet-length and flow-byte features alone are sufficient for DDoS detection in this dataset.
-
-#### Top 10 features by SHAP importance (controlled, seed 42)
-
-| rank | feature                    | mean \|SHAP\| |
-| ---: | :------------------------- | -----------: |
-|    1 | Bwd Packet Length Max      |      0.04830 |
-|    2 | Avg Bwd Segment Size       |      0.03716 |
-|    3 | Packet Length Variance     |      0.03229 |
-|    4 | Max Packet Length          |      0.02993 |
-|    5 | Fwd Packet Length Max      |      0.02267 |
-|    6 | Avg Fwd Segment Size       |      0.01998 |
-|    7 | Bwd Packet Length Mean     |      0.01990 |
-|    8 | Total Length of Bwd Packets |     0.01985 |
-|    9 | Packet Length Std          |      0.01975 |
-|   10 | Bwd Packet Length Std      |      0.01889 |
-
-Because Friday benign traffic produces various backward-flow patterns that the model learns to evaluate against DDoS, controlled variant slightly changes top importance toward backward-direction attributes (Bwd Packet Length Max rises to rank 1).
+- Very high performance on CICIDS2017 does not guarantee good generalization to
+  CSE-CIC-IDS2018.
+- SHAP is useful for identifying which features drive model decisions, but
+  interpretability alone does not solve dataset distribution shift.
+- In IDS settings, the decision threshold should be selected deliberately,
+  because missed attacks and false alarms have different costs.
+- Removing individual dataset-specific features can help, but in this project
+  threshold tuning had a stronger practical effect.

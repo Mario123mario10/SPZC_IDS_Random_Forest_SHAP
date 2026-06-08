@@ -1,15 +1,15 @@
-# Środowisko wirtualne (kluczowe dla narzędzia uv)
+# Virtual environments
 .venv/
 env/
 venv/
 
-# Pamięć podręczna Pythona
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 
-# Dane i modele
+# Data and generated artifacts
 data_raw/*
 !data_raw/README.md
 !data_raw/CIC_IDS2017/
@@ -22,7 +22,7 @@ data_processed/
 models/
 reports/
 
-# Pliki systemowe i IDE
+# System and IDE files
 .DS_Store
 .idea/
 .vscode/
